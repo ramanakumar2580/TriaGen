@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  # PHASE 1: Build the Docker images to ensure there are no code errors
+  # PHASE 1: Build the Docker images to check for errors
   build:
     runs-on: ubuntu-latest
     steps:
@@ -18,12 +18,14 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Backend Image
+        # This points to the Dockerfile inside apps/api
         run: docker build -t triagen-api ./apps/api
 
       - name: Build Frontend Image
+        # This points to the Dockerfile inside apps/web
         run: docker build -t triagen-web ./apps/web
 
-  # PHASE 2: Automatically log into AWS and update the live site
+  # PHASE 2: Log into AWS and update the live site
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -37,14 +39,14 @@ jobs:
           username: ec2-user
           key: ${{ secrets.AWS_PRIVATE_KEY }}
           script: |
-            # 1. Navigate to your project folder
+            # Navigate to the folder we created on your AWS server
             cd ~/TriaGen
 
-            # 2. Pull the latest code from GitHub
+            # Update the code on the server
             git pull origin main
 
-            # 3. Rebuild and restart the containers in the background
+            # Restart the containers with the new changes
             docker-compose up -d --build
 
-            # 4. Run database migrations to keep DB in sync
+            # Run database migrations
             docker exec triagen_api npx prisma migrate deploy
