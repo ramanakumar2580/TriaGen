@@ -1,0 +1,160 @@
+// apps/api/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  password  String
+  
+  // 🛡️ RBAC: Admin, Responder, Member
+  role      Role     @default(MEMBER) 
+  
+  // 📝 Smart Sign-Up: Links user to a specific team
+  teamId    String?
+  team      Team?    @relation(fields: [teamId], references: [id])
+  
+  // Relations
+  reportedIncidents Incident[] @relation("Reporter")
+  assignedIncidents Incident[] @relation("Assignee")
+  
+  events            IncidentEvent[]
+  attachments       Attachment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Team {
+  id        String     @id @default(uuid())
+  name      String     @unique 
+  
+  // 🔔 Real-Time: Used to broadcast to specific rooms
+  users     User[]
+  incidents Incident[] 
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@map("teams")
+}
+
+model Incident {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  
+  // ⚡ Strict Type Safety Enums
+  severity    Severity  
+  status      Status    @default(OPEN)
+
+  // ⚡ OPTIMISTIC LOCKING: Prevents concurrent update conflicts
+  version     Int       @default(0) 
+
+  tags        Json?
+
+  // ⏱️ SLA Tracking
+  slaDeadline DateTime? 
+  resolvedAt  DateTime? 
+
+  // Relations
+  reporterId  String
+  reporter    User      @relation("Reporter", fields: [reporterId], references: [id])
+
+  assigneeId  String?
+  assignee    User?     @relation("Assignee", fields: [assigneeId], references: [id])
+
+  // 🏢 Owning Team Visibility
+  teamId      String?
+  team        Team?     @relation(fields: [teamId], references: [id])
+
+  // 🔥 Cascade delete: Remove history/files if Incident is deleted
+  events      IncidentEvent[]
+  attachments Attachment[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("incidents")
+}
+
+model IncidentEvent {
+  id         String   @id @default(uuid())
+  
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  
+  // 📥 Post-Mortem Data
+  type       EventType 
+  message    String   
+  
+  createdAt  DateTime @default(now())
+
+  @@map("incident_events")
+}
+
+model Attachment {
+  id          String   @id @default(uuid())
+  filename    String
+  
+  // 🗑️ S3 Key for cleanup
+  fileKey     String   
+  
+  url         String   
+  contentType String   
+  sizeBytes   Int?     
+
+  incidentId  String
+  incident    Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@map("attachments")
+}
+
+enum Role {
+  MEMBER
+  RESPONDER
+  ADMIN
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum Status {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  CLOSED
+}
+
+enum EventType {
+  COMMENT
+  STATUS_CHANGE
+  ASSIGNMENT
+  EDITED
+  DELETED
+  ATTACHMENT
+  SYSTEM_ALERT // 🤖 Added for Background Worker logs
+}
