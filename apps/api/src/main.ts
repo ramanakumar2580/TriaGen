@@ -8,7 +8,7 @@ async function bootstrap() {
 
   // 1. Allow Frontend (Port 3000) to talk to Backend
   app.enableCors({
-    origin: 'http://localhost:3000',
+    origin: ['http://40.192.105.1:3000', 'http://localhost:3000'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
@@ -21,9 +21,9 @@ async function bootstrap() {
     }),
   );
 
-  const port = 4000;
-  await app.listen(port);
+  const port = process.env.PORT || 4000;
+  await app.listen(port, '0.0.0.0');
 
-  logger.log(`🚀 Server running on: http://localhost:${port}`);
+  logger.log(`🚀 Server running on: http://0.0.0.0:${port}`);
 }
 void bootstrap();
