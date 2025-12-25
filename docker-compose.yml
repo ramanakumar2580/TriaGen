@@ -42,12 +42,13 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       PORT: 4000
-      # 🔥 ADDED THESE CRITICAL VARIABLES
       JWT_SECRET: "super-secret-key-change-this-in-prod"
       NODE_ENV: production
+      # Allow frontend to talk to backend
+      FRONTEND_URL: "http://40.192.105.1:3000"
     depends_on:
       postgres:
-        condition: service_healthy # Waits for DB to be "Healthy"
+        condition: service_healthy
       redis:
         condition: service_started
 
@@ -55,12 +56,17 @@ services:
   web:
     build:
       context: ./apps/web
+      dockerfile: Dockerfile
+      # 🔥 PASS THE URL TO DOCKER BUILD HERE
+      args:
+        NEXT_PUBLIC_API_URL: "http://40.192.105.1:4000"
     container_name: triagen_web
     restart: always
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: "http://localhost:4000"
+      # Also keep it here for runtime (good practice)
+      NEXT_PUBLIC_API_URL: "http://40.192.105.1:4000"
     depends_on:
       - api
 

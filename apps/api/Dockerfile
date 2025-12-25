@@ -1,4 +1,3 @@
-# apps/api/Dockerfile
 FROM node:20-alpine AS builder
 
 # Install OpenSSL 3.0 and necessary build tools for Alpine

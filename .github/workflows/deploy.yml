@@ -16,29 +16,33 @@ jobs:
           script: |
             cd ~/TriaGen
 
-            # 1. EMERGENCY CLEANUP (Fixes ENOSPC memory error)
+            # 1. Clean up old resources
             docker system prune -af
 
-            # 2. Pull latest code
+            # 2. Get latest code
             git pull origin main
 
-            # 3. Setup Frontend Environment (API IP set chestundi)
-            echo "NEXT_PUBLIC_API_URL=http://40.192.105.1:4000" > apps/web/.env.local
+            # 3. Setup Frontend Environment
+            # Use the Secret for flexibility
+            echo "NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}" > apps/web/.env.local
 
-            # 4. Setup Backend Environment (CORS fix kosam FRONTEND_URL secret use cheyandi)
+            # 4. Setup Backend Environment (Fully Dynamic now!)
             echo "PORT=4000" > apps/api/.env
             echo "HOST=0.0.0.0" >> apps/api/.env
             echo "NODE_ENV=production" >> apps/api/.env
             echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> apps/api/.env
             echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> apps/api/.env
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> apps/api/.env
-            echo "AWS_REGION=ap-south-2" >> apps/api/.env
             echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> apps/api/.env
             echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> apps/api/.env
-            echo "AWS_BUCKET_NAME=triagen-uploads-ramana" >> apps/api/.env
+            # 👇 Using Secrets for these too
+            echo "AWS_REGION=${{ secrets.AWS_REGION }}" >> apps/api/.env
+            echo "AWS_BUCKET_NAME=${{ secrets.AWS_BUCKET_NAME }}" >> apps/api/.env
             echo "REDIS_HOST=redis" >> apps/api/.env
             echo "REDIS_PORT=6379" >> apps/api/.env
 
-            # 5. Restart and Rebuild
+            # 5. Build and Start
             docker-compose down
-            docker-compose up -d --build --pull always
+            # Pass the URL secret to the build args
+            docker-compose build --build-arg NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }} web
+            docker-compose up -d --build --remove-orphans
