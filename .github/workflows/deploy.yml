@@ -16,21 +16,20 @@ jobs:
           script: |
             cd ~/TriaGen
 
-            # 1. EMERGENCY CLEANUP (Fixes "no space left on device" error)
-            # This deletes old build layers BEFORE starting the new build
+            # 1. EMERGENCY CLEANUP (Fixes ENOSPC memory error)
             docker system prune -af
 
             # 2. Pull latest code
             git pull origin main
 
-            # 3. Setup Frontend Environment
+            # 3. Setup Frontend Environment (API IP set chestundi)
             echo "NEXT_PUBLIC_API_URL=http://40.192.105.1:4000" > apps/web/.env.local
 
-            # 4. Setup Backend Environment
+            # 4. Setup Backend Environment (CORS fix kosam FRONTEND_URL secret use cheyandi)
             echo "PORT=4000" > apps/api/.env
             echo "HOST=0.0.0.0" >> apps/api/.env
             echo "NODE_ENV=production" >> apps/api/.env
-            echo "FRONTEND_URL=http://40.192.105.1:3000" >> apps/api/.env
+            echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> apps/api/.env
             echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> apps/api/.env
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> apps/api/.env
             echo "AWS_REGION=ap-south-2" >> apps/api/.env
@@ -42,4 +41,4 @@ jobs:
 
             # 5. Restart and Rebuild
             docker-compose down
-            docker-compose up -d --build
+            docker-compose up -d --build --pull always
