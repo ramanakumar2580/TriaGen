@@ -21,6 +21,10 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # THIS IS THE CRITICAL MISSING STEP
+      - name: Generate Prisma Client
+        run: npx prisma generate --schema=packages/database/prisma/schema.prisma
+
       - name: Lint and Format check
         run: npm run lint || echo "Linting failed, but continuing build..."
 
