@@ -104,9 +104,6 @@ export class IncidentsService {
     return incident;
   }
 
-  // =========================
-  // 2. FIND ALL
-  // =========================
   async findAll(
     user: User,
     filters: {
