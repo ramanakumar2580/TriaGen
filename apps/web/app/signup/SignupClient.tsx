@@ -50,7 +50,7 @@ export default function SignupPage() {
     setLoading(true);
 
     // ⚡ FIX: Hardcoded to Port 4000 to match your Backend
-    const API_URL = "http://localhost:4000";
+    const API_URL = "http://40.192.105.1:4000";
 
     try {
       // 🚀 Sending full payload including Role & Team

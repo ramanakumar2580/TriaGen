@@ -54,7 +54,6 @@ export class IncidentsProcessor extends WorkerHost {
       await this.prisma.incidentEvent.create({
         data: {
           incidentId,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           type: EventType.SYSTEM_ALERT,
           message: 'SLA BREACHED: Auto-escalated to CRITICAL severity.',
           userId: incident.reporterId, // Attributed to system process

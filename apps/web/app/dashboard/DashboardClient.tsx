@@ -99,7 +99,7 @@ export default function Dashboard() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  const API_URL = "http://localhost:4000";
+  const API_URL = "http://40.192.105.1:4000";
   const socketRef = useRef<Socket | null>(null);
 
   // 🔥 FIX 2: Helper to change tabs via URL

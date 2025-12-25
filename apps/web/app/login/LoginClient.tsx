@@ -42,7 +42,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
-    const API_URL = "http://localhost:4000";
+    const API_URL = "http://40.192.105.1:4000";
 
     try {
       const res = await axios.post(`${API_URL}/auth/login`, {
