@@ -97,7 +97,7 @@ export default function IncidentWarRoom() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const API_URL = "http://localhost:4000";
+  const API_URL = process.env.NEXT_PUBLIC_API_URL;
   const socketRef = useRef<Socket | null>(null);
 
   const [isInitialLoad, setIsInitialLoad] = useState(true);

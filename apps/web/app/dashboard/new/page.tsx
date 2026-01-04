@@ -50,7 +50,7 @@ export default function NewIncidentPage() {
     e.preventDefault();
     setLoading(true);
 
-    const API_URL = "http://localhost:4000";
+    const API_URL = process.env.NEXT_PUBLIC_API_URL;
     const token = localStorage.getItem("token");
 
     if (!token) {
