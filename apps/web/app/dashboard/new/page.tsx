@@ -1,5 +1,7 @@
+export const dynamic = "force-dynamic";
 /* eslint-disable @typescript-eslint/no-explicit-any */
-"use client";
+// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+("use client");
 
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import axios from "axios";
