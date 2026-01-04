@@ -2,7 +2,6 @@ name: Deploy TriaGen
 on:
   push:
     branches: [main]
-  # Keep this so you can run it manually if needed
   workflow_dispatch:
 
 jobs:
@@ -15,22 +14,22 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # 🔥 FIX: Increase timeout to 30 minutes (Prevents "Run Command Timeout" error)
           command_timeout: 30m
           script: |
             cd ~/TriaGen
 
-            # 1. Clean up old resources
+            # 1. Clean up
             docker system prune -af
 
             # 2. Get latest code
             git pull origin main
 
-            # 3. Setup Frontend Environment
-            # Use the Secret for flexibility
-            echo "NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}" > apps/web/.env.local
+            # 3. 🔥 CRITICAL FIX: Create ROOT .env file
+            # This allows 'docker-compose up' to see the variables!
+            echo "NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}" > .env
+            echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> .env
 
-            # 4. Setup Backend Environment (Fully Dynamic now!)
+            # 4. Setup Backend Environment
             echo "PORT=4000" > apps/api/.env
             echo "HOST=0.0.0.0" >> apps/api/.env
             echo "NODE_ENV=production" >> apps/api/.env
@@ -44,8 +43,6 @@ jobs:
             echo "REDIS_HOST=redis" >> apps/api/.env
             echo "REDIS_PORT=6379" >> apps/api/.env
 
-            # 5. Build and Start
+            # 5. Build and Start (Now safe to rebuild!)
             docker-compose down
-            # Pass the URL secret to the build args
-            docker-compose build --build-arg NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }} web
             docker-compose up -d --build --remove-orphans
