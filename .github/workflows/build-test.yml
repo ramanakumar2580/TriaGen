@@ -33,5 +33,6 @@ jobs:
 
       - name: Build Frontend (Web)
         env:
-          NEXT_PUBLIC_API_URL: http://40.192.105.1:4000
+          # ⚡ FIX: Reset to localhost for clean start
+          NEXT_PUBLIC_API_URL: http://localhost:4000
         run: npm run build --workspace=apps/web

@@ -44,8 +44,8 @@ services:
       PORT: 4000
       JWT_SECRET: "super-secret-key-change-this-in-prod"
       NODE_ENV: production
-      # Allow frontend to talk to backend
-      FRONTEND_URL: "http://40.192.105.1:3000"
+      # ⚡ FIX: Reset to localhost for clean start
+      FRONTEND_URL: "http://localhost:3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,16 +57,16 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
-      # 🔥 PASS THE URL TO DOCKER BUILD HERE
+      # ⚡ FIX: Reset build arg to localhost
       args:
-        NEXT_PUBLIC_API_URL: "http://40.192.105.1:4000"
+        NEXT_PUBLIC_API_URL: "http://localhost:4000"
     container_name: triagen_web
     restart: always
     ports:
       - "3000:3000"
     environment:
-      # Also keep it here for runtime (good practice)
-      NEXT_PUBLIC_API_URL: "http://40.192.105.1:4000"
+      # ⚡ FIX: Reset env var to localhost
+      NEXT_PUBLIC_API_URL: "http://localhost:4000"
     depends_on:
       - api
 

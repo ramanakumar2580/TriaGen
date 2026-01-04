@@ -8,8 +8,7 @@ async function bootstrap() {
 
   // 1. Allow Frontend (Port 3000) to talk to Backend
   app.enableCors({
-    origin: ['http://40.192.105.1:3000', 'http://localhost:3000'],
-    // 🔥 ADDED 'OPTIONS' HERE TO FIX YOUR ERROR
+    origin: ['http://localhost:3000'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });

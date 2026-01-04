@@ -5,7 +5,6 @@ import axios from "axios";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-// 🔥 Added ArrowLeft here
 import {
   Loader2,
   Zap,
@@ -49,8 +48,8 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
 
-    // ⚡ FIX: Hardcoded to Port 4000 to match your Backend
-    const API_URL = "http://40.192.105.1:4000";
+    // ⚡ FIX: Resetting to localhost for clean start (We will update this later with new AWS IP)
+    const API_URL = "http://localhost:4000";
 
     try {
       // 🚀 Sending full payload including Role & Team
