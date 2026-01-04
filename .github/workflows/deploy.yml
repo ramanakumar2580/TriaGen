@@ -1,8 +1,8 @@
 name: Deploy TriaGen
-
-# ⚡ FIX: Changed from 'push' to 'workflow_dispatch'
-# This "Pauses" auto-deployment so it doesn't fail while we setup the new server.
 on:
+  push:
+    branches: [main]
+  # Keep this so you can run it manually if needed
   workflow_dispatch:
 
 jobs:
@@ -15,6 +15,8 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # 🔥 FIX: Increase timeout to 30 minutes (Prevents "Run Command Timeout" error)
+          command_timeout: 30m
           script: |
             cd ~/TriaGen
 
@@ -25,9 +27,10 @@ jobs:
             git pull origin main
 
             # 3. Setup Frontend Environment
+            # Use the Secret for flexibility
             echo "NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}" > apps/web/.env.local
 
-            # 4. Setup Backend Environment
+            # 4. Setup Backend Environment (Fully Dynamic now!)
             echo "PORT=4000" > apps/api/.env
             echo "HOST=0.0.0.0" >> apps/api/.env
             echo "NODE_ENV=production" >> apps/api/.env
