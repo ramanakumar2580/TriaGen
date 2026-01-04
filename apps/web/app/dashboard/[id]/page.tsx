@@ -97,7 +97,6 @@ export default function IncidentWarRoom() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ⚡ FIX: Resetting to localhost for clean start (We will update this later with new AWS IP)
   const API_URL = "http://localhost:4000";
   const socketRef = useRef<Socket | null>(null);
 

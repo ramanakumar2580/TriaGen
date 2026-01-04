@@ -24,7 +24,7 @@ import {
   Filter,
   XCircle,
 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation"; // 🔥 Added useSearchParams
 
 // --- Types ---
 enum Severity {
@@ -99,7 +99,6 @@ export default function Dashboard() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  // ⚡ FIX: Resetting to localhost for clean start (We will update this later with new AWS IP)
   const API_URL = "http://localhost:4000";
   const socketRef = useRef<Socket | null>(null);
 
