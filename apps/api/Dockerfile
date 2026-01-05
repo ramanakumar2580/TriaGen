@@ -1,22 +1,29 @@
 # --- Builder Stage ---
 FROM node:20-alpine AS builder
 
-# 1. Install build tools (Python, Make, G++) - Critical for bcrypt/sharp on Alpine
+# 1. Install build tools (Python, Make, G++)
 RUN apk add --no-cache openssl python3 make g++
 
 WORKDIR /app
 
 COPY package*.json ./
 
-# 2. Install dependencies (including dev dependencies for building)
+# 2. Install dependencies
 RUN npm install
 
-# 3. Generate Prisma Client
+# 3. Generate Prisma Client (Using fixed path & version)
 COPY apps/api/prisma ./prisma/
 RUN npx prisma@5.22.0 generate
 
 # 4. Build the app
 COPY . .
+
+# 🔥 CRITICAL FIX: Remove "packageManager" field to prevent Yarn/NPM conflict
+# We run this on both root and app package.json files just to be safe
+RUN sed -i '/"packageManager":/d' ./package.json || true
+RUN sed -i '/"packageManager":/d' ./apps/web/package.json || true
+RUN sed -i '/"packageManager":/d' ./apps/api/package.json || true
+
 RUN npm run build
 
 # --- Production Stage ---
@@ -39,5 +46,5 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 EXPOSE 4000
 
-# 8. Start the server (Dynamic find command to locate main.js)
+# 8. Start the server
 CMD ["sh", "-c", "node $(find dist -name main.js | head -n 1)"]

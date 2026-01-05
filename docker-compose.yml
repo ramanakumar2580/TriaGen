@@ -31,8 +31,8 @@ services:
   # Backend API
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: . # 👈 FIXED: Must be Root (.)
+      dockerfile: apps/api/Dockerfile # 👈 FIXED: Point to file path
     container_name: triagen_api
     restart: always
     ports:
@@ -42,10 +42,14 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       PORT: 4000
-      JWT_SECRET: "super-secret-key-change-this-in-prod"
+      JWT_SECRET: "l4hl5QdjAQcLcjk91hZ/qwbd+Qg5wE0ryGXbIX8GM8u8aPog3vK6RRvktZr1ZHqfRxCJ8iaxtBXi4DRGt2EeGA=="
       NODE_ENV: production
-      # 👇 FIX: Use Variable so GitHub can inject the real URL
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      # AWS Secrets (Pass them through)
+      AWS_REGION: ${AWS_REGION}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_BUCKET_NAME: ${AWS_BUCKET_NAME}
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,9 +59,8 @@ services:
   # Frontend Web
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
-      # 👇 FIX: Use Variable so GitHub can inject the real API URL
+      context: . # 👈 FIXED: Must be Root (.)
+      dockerfile: apps/web/Dockerfile # 👈 FIXED: Point to file path
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     container_name: triagen_web
@@ -65,7 +68,6 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # 👇 FIX: Use Variable here too
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     depends_on:
       - api

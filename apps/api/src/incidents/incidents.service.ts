@@ -37,9 +37,6 @@ export class IncidentsService {
     @InjectQueue('incidents') private incidentsQueue: Queue,
   ) {}
 
-  // =========================
-  // 1. CREATE
-  // =========================
   async create(user: User, dto: CreateIncidentDto) {
     let teamId: string | null | undefined = dto.teamId;
 
@@ -135,9 +132,6 @@ export class IncidentsService {
     });
   }
 
-  // =========================
-  // 3. FIND ONE
-  // =========================
   async findOne(id: string) {
     const incident = await this.prisma.incident.findUnique({
       where: { id },
@@ -160,9 +154,6 @@ export class IncidentsService {
     return incident;
   }
 
-  // =========================
-  // 4. UPDATE
-  // =========================
   async update(
     id: string,
     user: User,
@@ -224,9 +215,6 @@ export class IncidentsService {
     return incident;
   }
 
-  // =========================
-  // 5. REMOVE
-  // =========================
   async remove(id: string, user: User) {
     const incident = await this.prisma.incident.findUnique({ where: { id } });
     if (!incident) throw new NotFoundException('Incident not found');
@@ -250,9 +238,6 @@ export class IncidentsService {
     return this.prisma.incident.delete({ where: { id } });
   }
 
-  // =========================
-  // 6. EVENT METHODS
-  // =========================
   async addEvent(
     incidentId: string,
     user: User,
@@ -323,9 +308,6 @@ export class IncidentsService {
     return { success: true };
   }
 
-  // =========================
-  // 7. ATTACHMENT DELETION
-  // =========================
   async removeAttachment(
     incidentId: string,
     attachmentId: string,
