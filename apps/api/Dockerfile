@@ -13,7 +13,7 @@ RUN npm install
 
 # 3. Generate Prisma Client
 COPY apps/api/prisma ./prisma/
-RUN npx prisma generate
+RUN npx prisma@5.22.0 generate
 
 # 4. Build the app
 COPY . .
