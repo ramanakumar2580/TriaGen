@@ -170,7 +170,6 @@ export default function IncidentWarRoom() {
 
     // --- LISTENERS ---
 
-    // 1. Handle New Comments
     socket.on("newComment", (event) => {
       setIncident((prev: any) => {
         if (!prev) return prev;
@@ -205,18 +204,6 @@ export default function IncidentWarRoom() {
       });
     });
 
-    // 2. 🔥 FIX: Handle Message/Event Removal (Real-time Sync)
-    socket.on("incident:event_removed", (payload: { id: string }) => {
-      setIncident((prev: any) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          events: prev.events.filter((e: any) => e.id !== payload.id),
-        };
-      });
-    });
-
-    // 3. Handle Updates (Assignee, Severity, etc)
     socket.on("incident:updated", (updatedData: any) => {
       setIncident((prev: any) => {
         if (!prev) return prev;
@@ -228,12 +215,11 @@ export default function IncidentWarRoom() {
         };
       });
 
-      if (updatedData.assignee && updatedData.assignee.id !== currentUser?.id) {
+      if (updatedData.assignee) {
         toast.info(`Incident assigned to ${updatedData.assignee.name}`);
       }
     });
 
-    // 4. Handle New Attachments
     socket.on("incident:new_attachment", (attachment) => {
       setIncident((prev: any) => {
         if (!prev) return prev;
@@ -254,7 +240,6 @@ export default function IncidentWarRoom() {
       });
     });
 
-    // 5. Handle Attachment Removal
     socket.on("incident:attachment_removed", (payload) => {
       setIncident((prev: any) => {
         if (!prev) return prev;
@@ -265,16 +250,10 @@ export default function IncidentWarRoom() {
       });
     });
 
-    // 6. 🔥 FIX: Handle Incident Deletion (Kick User out)
-    socket.on("incident:deleted", () => {
-      toast.error("This incident has been deleted.");
-      router.push("/dashboard");
-    });
-
     return () => {
       socket.disconnect();
     };
-  }, [id, API_URL, router, currentUser]); // Added currentUser to dependencies
+  }, [id, API_URL, router]);
 
   // --- ACTIONS ---
 
@@ -291,6 +270,7 @@ export default function IncidentWarRoom() {
     );
   };
 
+  // 🔥 FIX: Split logic into uploadFiles (core) and handleInputFileChange (event)
   const uploadFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     setIsUploading(true);
@@ -315,6 +295,7 @@ export default function IncidentWarRoom() {
     }
   };
 
+  // 🔥 FIX: Correct Event Type for Input Change
   const handleInputFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     uploadFiles(e.target.files);
   };
@@ -330,8 +311,6 @@ export default function IncidentWarRoom() {
       await axios.delete(`${API_URL}/incidents/${id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
-      // No need to redirect manually here, the socket event will handle it for consistency
-      // But keeping it for instant local feedback is fine
       toast.success("Incident deleted");
       router.push("/dashboard");
     } catch {
@@ -342,7 +321,6 @@ export default function IncidentWarRoom() {
   const handleDeleteMessage = async (eventId: string) => {
     if (!confirm("Delete message?")) return;
 
-    // Optimistic Update
     setIncident((prev: any) => ({
       ...prev,
       events: prev.events.filter((e: any) => e.id !== eventId),
@@ -438,6 +416,7 @@ export default function IncidentWarRoom() {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         }
       );
+      // Optimistic update
       setIncident((prev: any) => ({
         ...prev,
         assignee: currentUser,
@@ -640,6 +619,7 @@ export default function IncidentWarRoom() {
                               handleDownload(item.url, item.filename)
                             }
                           >
+                            {/* 🔥 FIX: Suppress Next.js Image Warning */}
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={item.url}
