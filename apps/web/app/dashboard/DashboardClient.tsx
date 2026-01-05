@@ -160,16 +160,51 @@ export default function Dashboard() {
         console.log("✅ Connected to Command Center Socket")
       );
 
-      socket.on("incident:assigned", (payload: any) => {
+      // --- SOCKET EVENT HANDLERS ---
+
+      // 1. Incident Created
+      socket.on("incident:created", (payload: any) => {
+        // Logic: Don't notify if *I* created it (to avoid double toast)
+        if (payload.reporterId === parsedUser.id) return;
+
         toast.message("🚨 New Incident Alert", {
           description: `${payload.severity}: ${payload.title}`,
           icon: <ShieldAlert className="h-5 w-5 text-red-500" />,
           duration: 6000,
         });
+
+        // Add to list if not already there
         setIncidents((prev) => {
           if (prev.find((i) => i.id === payload.id)) return prev;
           return [payload, ...prev];
         });
+      });
+
+      // 2. Incident Assigned (The Fix for Notifications)
+      socket.on("incident:assigned", (payload: any) => {
+        // Update the list immediately
+        setIncidents((prev) =>
+          prev.map((inc) => (inc.id === payload.id ? payload : inc))
+        );
+
+        // Logic: Who was assigned?
+        const isAssignedToMe = payload.assignee?.id === parsedUser.id;
+
+        if (isAssignedToMe) {
+          // Case A: I was assigned
+          toast.message("👮 You have been assigned!", {
+            description: `You are now handling "${payload.title}"`,
+            icon: <Briefcase className="h-5 w-5 text-blue-500" />,
+            duration: 6000,
+          });
+        } else {
+          // Case B: Someone else was assigned
+          toast.message("Incident Assigned", {
+            description: `${payload.assignee?.name || "A Responder"} is now handling "${payload.title}"`,
+            icon: <Briefcase className="h-5 w-5 text-zinc-400" />,
+            duration: 6000,
+          });
+        }
       });
     }
 
@@ -228,14 +263,12 @@ export default function Dashboard() {
         activeTab === "ALL" ||
         (activeTab === "TEAM" && user?.team?.name === formData.teamName)
       ) {
-        // 🔥 FIX START: Deduplication Logic
-        // Check if incident already exists (from Socket) before adding
+        // 🔥 FIX: Deduplication Logic
         setIncidents((prev) => {
           const exists = prev.find((i) => i.id === res.data.id);
           if (exists) return prev; // If socket added it already, do nothing
           return [res.data, ...prev]; // Otherwise, add it manually
         });
-        // 🔥 FIX END
       }
 
       setIsModalOpen(false);

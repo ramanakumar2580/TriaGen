@@ -2,13 +2,13 @@ import { Module } from '@nestjs/common';
 import { FilesService } from './files.service';
 import { FilesController } from './files.controller';
 import { PrismaModule } from '../prisma/prisma.module';
-import { AuthModule } from '../auth/auth.module'; // 🔥 Required for AuthGuard
-import { ConfigModule } from '@nestjs/config'; // 🔥 Good practice for Env vars
+import { AuthModule } from '../auth/auth.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
     PrismaModule,
-    AuthModule, // 🛡️ Enables @UseGuards(AuthGuard('jwt')) in Controller
+    AuthModule,
     ConfigModule, // ⚙️ Enables access to environment variables safely
   ],
   controllers: [FilesController],

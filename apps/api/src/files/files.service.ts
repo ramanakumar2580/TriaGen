@@ -18,7 +18,7 @@ export class FilesService {
 
   constructor(private prisma: PrismaService) {
     this.s3Client = new S3Client({
-      region: process.env.AWS_REGION,
+      region: 'ap-south-2', // ✅ Hardcoded Region for S3 Client
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
@@ -99,8 +99,9 @@ export class FilesService {
     userId: string;
     sizeBytes?: number;
   }) {
-    // Construct Public URL
-    const publicUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${data.fileKey}`;
+    // 🔥 FIX: Hardcoded 'ap-south-2' here to ensure the public URL is generated correctly
+    // Previously used process.env.AWS_REGION which might have been missing or wrong
+    const publicUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.ap-south-2.amazonaws.com/${data.fileKey}`;
 
     return this.prisma.attachment.create({
       data: {

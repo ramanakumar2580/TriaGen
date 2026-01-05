@@ -12,7 +12,6 @@ import {
 import { FilesService } from './files.service';
 import { AuthGuard } from '@nestjs/passport';
 
-// 1. Strict Type for Request (matches JwtStrategy return)
 interface RequestWithUser {
   user: {
     id: string;
@@ -42,7 +41,7 @@ export class FilesController {
   @UseGuards(AuthGuard('jwt'))
   @Post('confirm')
   async confirmUpload(
-    @Request() req: RequestWithUser, // 🔥 Fixed Type
+    @Request() req: RequestWithUser,
     @Body()
     body: {
       incidentId: string;
@@ -54,22 +53,16 @@ export class FilesController {
   ) {
     return this.filesService.saveFileRecord({
       ...body,
-      // 🔥 Fixed: JwtStrategy returns 'id', not 'userId'
       userId: req.user.id,
     });
   }
 
-  // 2. 🔥 NEW: Secure Download Link
-  // GET /files/download/incident-123%2Fscreenshot.png
   @UseGuards(AuthGuard('jwt'))
   @Get('download/:key')
   async downloadFile(@Param('key') key: string) {
-    // Decode because S3 keys contain slashes which are URL encoded
     const decodedKey = decodeURIComponent(key);
     return this.filesService.getDownloadUrl(decodedKey);
   }
-
-  // 3. 🔥 NEW: Delete Single File (Optional but good for cleanup)
   @UseGuards(AuthGuard('jwt'))
   @Delete(':key')
   async deleteFile(@Param('key') key: string) {
