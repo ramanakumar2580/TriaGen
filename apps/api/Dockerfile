@@ -12,7 +12,7 @@ COPY package*.json ./
 RUN npm install
 
 # 3. Generate Prisma Client
-COPY prisma ./prisma/
+COPY apps/api/prisma ./prisma/
 RUN npx prisma generate
 
 # 4. Build the app
