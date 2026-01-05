@@ -24,7 +24,7 @@ import {
   Filter,
   XCircle,
 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation"; // 🔥 Added useSearchParams
+import { useRouter, useSearchParams } from "next/navigation";
 
 // --- Types ---
 enum Severity {
@@ -75,7 +75,7 @@ export default function Dashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // 🔥 FIX 1: Read active tab from URL (Persistent after refresh)
+  // Read active tab from URL (Persistent after refresh)
   const activeTab = searchParams.get("tab") || "ALL";
 
   // Data State
@@ -102,7 +102,7 @@ export default function Dashboard() {
   const API_URL = process.env.NEXT_PUBLIC_API_URL;
   const socketRef = useRef<Socket | null>(null);
 
-  // 🔥 FIX 2: Helper to change tabs via URL
+  // Helper to change tabs via URL
   const handleTabChange = (tab: string) => {
     router.push(`/dashboard?tab=${tab}`);
   };
@@ -133,7 +133,7 @@ export default function Dashboard() {
     const fetchIncidents = async () => {
       setLoading(true);
       try {
-        // 🔥 FIX 3: Send 'tab' param to Backend so it knows what to filter!
+        // Send 'tab' param to Backend so it knows what to filter!
         const res = await axios.get(`${API_URL}/incidents`, {
           headers: { Authorization: `Bearer ${token}` },
           params: { tab: activeTab.toLowerCase() }, // 'all', 'mine', or 'team'
@@ -179,11 +179,9 @@ export default function Dashboard() {
         socketRef.current = null;
       }
     };
-    // 🔥 FIX 4: Re-fetch when 'activeTab' changes
   }, [router, API_URL, activeTab]);
 
   // 🔍 Client-side filtering (Search, Status, Severity)
-  // Note: Tab filtering is now handled by the Backend API call above
   const filteredIncidents = useMemo(() => {
     return incidents.filter((incident) => {
       const safeTitle = incident.title ? incident.title.toLowerCase() : "";
@@ -230,7 +228,14 @@ export default function Dashboard() {
         activeTab === "ALL" ||
         (activeTab === "TEAM" && user?.team?.name === formData.teamName)
       ) {
-        setIncidents((prev) => [res.data, ...prev]);
+        // 🔥 FIX START: Deduplication Logic
+        // Check if incident already exists (from Socket) before adding
+        setIncidents((prev) => {
+          const exists = prev.find((i) => i.id === res.data.id);
+          if (exists) return prev; // If socket added it already, do nothing
+          return [res.data, ...prev]; // Otherwise, add it manually
+        });
+        // 🔥 FIX END
       }
 
       setIsModalOpen(false);
@@ -332,7 +337,7 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* TABS SECTION - 🔥 Updated to use handleTabChange */}
+        {/* TABS SECTION */}
         <div className="flex items-center gap-2 mb-6 border-b border-zinc-800 pb-1">
           <button
             onClick={() => handleTabChange("ALL")}
@@ -455,7 +460,7 @@ export default function Dashboard() {
                     setSearchQuery("");
                     setStatusFilter("ALL");
                     setSeverityFilter("ALL");
-                    handleTabChange("ALL"); // Reset to ALL via URL
+                    handleTabChange("ALL");
                   }}
                   className="mt-2 text-blue-500 hover:underline text-sm"
                 >
