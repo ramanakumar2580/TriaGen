@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
@@ -6,7 +5,7 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import axios from "axios";
 import { io, Socket } from "socket.io-client";
-import { format, differenceInSeconds, formatDistanceToNow } from "date-fns";
+import { format, differenceInSeconds } from "date-fns";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import {
@@ -14,6 +13,7 @@ import {
   Paperclip,
   CheckCircle2,
   ChevronLeft,
+  Briefcase,
   Loader2,
   Trash2,
   Download,
@@ -25,10 +25,6 @@ import {
   Check,
   Lock,
   RotateCcw,
-  Clock,
-  User,
-  Hash,
-  AlertTriangle,
 } from "lucide-react";
 
 enum Status {
@@ -37,7 +33,7 @@ enum Status {
   RESOLVED = "RESOLVED",
 }
 
-// ⏱️ SLA Component - Fixed interval and breach logic
+// ⏱️ SLA Component
 const SLACountdown = ({
   deadline,
   status,
@@ -50,107 +46,101 @@ const SLACountdown = ({
 
   useEffect(() => {
     if (!deadline || status === Status.RESOLVED) return;
-
-    const calculate = () => {
+    const interval = setInterval(() => {
       const now = new Date();
       const end = new Date(deadline);
       const diff = differenceInSeconds(end, now);
-
       if (diff <= 0) {
         setIsBreached(true);
-        setTimeLeft("SLA BREACHED");
+        setTimeLeft("BREACHED");
+        clearInterval(interval);
       } else {
         const hours = Math.floor(diff / 3600);
         const minutes = Math.floor((diff % 3600) / 60);
-        const seconds = Math.floor(diff % 60);
-        setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+        setTimeLeft(`${hours}h ${minutes}m`);
       }
-    };
-
-    calculate();
-    const interval = setInterval(calculate, 1000);
+    }, 1000);
     return () => clearInterval(interval);
   }, [deadline, status]);
 
-  if (status === Status.RESOLVED) {
+  if (status === Status.RESOLVED)
     return (
-      <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded text-emerald-500 font-mono text-[10px] font-bold">
+      <span className="text-emerald-500 font-mono text-xs font-bold flex items-center gap-1">
         <CheckCircle2 className="h-3 w-3" /> SLA MET
-      </div>
+      </span>
     );
-  }
-
   if (!deadline) return null;
 
   return (
-    <div
-      className={`flex items-center gap-1.5 px-2 py-1 border rounded font-mono text-[10px] font-bold ${
-        isBreached
-          ? "bg-red-500/10 border-red-500/20 text-red-500"
-          : "bg-zinc-800 border-zinc-700 text-zinc-400"
-      }`}
+    <span
+      className={`font-mono text-xs ${isBreached ? "text-red-500" : "text-zinc-400"}`}
     >
-      <Clock className="h-3 w-3" /> {timeLeft}
-    </div>
+      {timeLeft}
+    </span>
   );
 };
 
 export default function IncidentWarRoom() {
   const { id } = useParams();
   const router = useRouter();
-  const API_URL = process.env.NEXT_PUBLIC_API_URL;
-
-  // States
   const [incident, setIncident] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [newMessage, setNewMessage] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Edit State
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editMessageText, setEditMessageText] = useState("");
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL;
   const socketRef = useRef<Socket | null>(null);
 
-  // --- SCROLL LOGIC ---
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior, block: "end" });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
-  // --- TIMELINE MERGE ---
+  // --- MERGE LOGIC ---
   const timeline = useMemo(() => {
     if (!incident) return [];
-    const chatEvents = (incident.events || []).map((e: any) => ({
+
+    const chatEvents = incident.events.map((e: any) => ({
       ...e,
       kind: "EVENT",
       sortTime: new Date(e.createdAt).getTime(),
     }));
-    const fileEvents = (incident.attachments || []).map((a: any) => ({
+
+    const fileEvents = incident.attachments.map((a: any) => ({
       ...a,
       kind: "ATTACHMENT",
       sortTime: new Date(a.createdAt).getTime(),
-      user: a.uploadedBy || { name: "System", id: "system" },
+      user: a.uploadedBy || { name: "Unknown", id: "unknown" },
       message: `Uploaded ${a.filename}`,
     }));
+
     return [...chatEvents, ...fileEvents].sort(
       (a, b) => a.sortTime - b.sortTime
     );
   }, [incident]);
 
+  // Scroll Effect
   useEffect(() => {
     if (timeline.length > 0) {
-      scrollToBottom(isInitialLoad ? "auto" : "smooth");
-      if (isInitialLoad) setIsInitialLoad(false);
+      if (isInitialLoad) {
+        scrollToBottom("auto");
+        setIsInitialLoad(false);
+      } else {
+        scrollToBottom("smooth");
+      }
     }
   }, [timeline, isInitialLoad]);
 
-  // --- INITIAL DATA & SOCKET ---
   useEffect(() => {
     const token = localStorage.getItem("token");
     const userStr = localStorage.getItem("user");
@@ -160,61 +150,103 @@ export default function IncidentWarRoom() {
     }
     if (userStr) setCurrentUser(JSON.parse(userStr));
 
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(`${API_URL}/incidents/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+    axios
+      .get(`${API_URL}/incidents/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => {
         setIncident(res.data);
         setLoading(false);
-      } catch {
-        toast.error("Failed to load incident");
-        router.push("/dashboard");
-      }
-    };
+      })
+      .catch(() => router.push("/dashboard"));
 
-    fetchData();
-
-    socketRef.current = io(API_URL!, {
+    socketRef.current = io(API_URL, {
       auth: { token },
       transports: ["websocket"],
-      reconnection: true,
     });
-
     const socket = socketRef.current;
+
     socket.emit("joinRoom", `incident:${id}`);
 
-    socket.on("newComment", (payload) => {
+    // --- LISTENERS ---
+
+    socket.on("newComment", (event) => {
       setIncident((prev: any) => {
         if (!prev) return prev;
-        if (payload.type === "DELETED") {
+
+        if (event.type === "DELETED") {
           return {
             ...prev,
-            events: prev.events.filter((e: any) => e.id !== payload.id),
+            events: prev.events.filter((e: any) => e.id !== event.id),
           };
         }
-        if (payload.type === "EDITED") {
+
+        if (event.type === "EDITED") {
           return {
             ...prev,
             events: prev.events.map((e: any) =>
-              e.id === payload.id ? payload : e
+              e.id === event.id ? event : e
             ),
           };
         }
-        if (prev.events.some((e: any) => e.id === payload.id)) return prev;
-        return { ...prev, events: [...prev.events, payload] };
+
+        if (prev.events.find((e: any) => e.id === event.id)) return prev;
+
+        let newStatus = prev.status;
+        if (event.type === "STATUS_CHANGE") {
+          if (event.message.includes("RESOLVED")) newStatus = Status.RESOLVED;
+          if (event.message.includes("ACKNOWLEDGED"))
+            newStatus = Status.ACKNOWLEDGED;
+          if (event.message.includes("OPEN")) newStatus = Status.OPEN;
+        }
+
+        return { ...prev, status: newStatus, events: [...prev.events, event] };
       });
     });
 
-    socket.on("incident:updated", (data) => {
-      setIncident((prev: any) => ({ ...prev, ...data }));
+    socket.on("incident:updated", (updatedData: any) => {
+      setIncident((prev: any) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          ...updatedData,
+          events: prev.events,
+          attachments: prev.attachments,
+        };
+      });
+
+      if (updatedData.assignee) {
+        toast.info(`Incident assigned to ${updatedData.assignee.name}`);
+      }
     });
 
-    socket.on("incident:new_attachment", (file) => {
+    socket.on("incident:new_attachment", (attachment) => {
       setIncident((prev: any) => {
-        if (!prev || prev.attachments.some((a: any) => a.id === file.id))
+        if (!prev) return prev;
+        if (prev.attachments.find((a: any) => a.id === attachment.id))
           return prev;
-        return { ...prev, attachments: [...prev.attachments, file] };
+
+        const patchedAttachment = {
+          ...attachment,
+          uploadedBy: attachment.uploadedBy || {
+            name: "New Upload",
+            id: "temp",
+          },
+        };
+        return {
+          ...prev,
+          attachments: [...prev.attachments, patchedAttachment],
+        };
+      });
+    });
+
+    socket.on("incident:attachment_removed", (payload) => {
+      setIncident((prev: any) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          attachments: prev.attachments.filter((a: any) => a.id !== payload.id),
+        };
       });
     });
 
@@ -224,31 +256,28 @@ export default function IncidentWarRoom() {
   }, [id, API_URL, router]);
 
   // --- ACTIONS ---
+
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!newMessage.trim() || isUploading) return;
+    if (!newMessage.trim()) return;
     const token = localStorage.getItem("token");
-    const content = newMessage;
+    const msg = newMessage;
     setNewMessage("");
-
-    try {
-      await axios.post(
-        `${API_URL}/incidents/${id}/comments`,
-        { message: content },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-    } catch {
-      toast.error("Message failed to send");
-      setNewMessage(content);
-    }
+    await axios.post(
+      `${API_URL}/incidents/${id}/comments`,
+      { message: msg },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
   };
 
+  // 🔥 FIX: Split logic into uploadFiles (core) and handleInputFileChange (event)
   const uploadFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     setIsUploading(true);
-    const token = localStorage.getItem("token");
     const formData = new FormData();
     formData.append("file", files[0]);
+    const token = localStorage.getItem("token");
+
     try {
       await axios.post(`${API_URL}/incidents/${id}/attachments`, formData, {
         headers: {
@@ -256,7 +285,7 @@ export default function IncidentWarRoom() {
           "Content-Type": "multipart/form-data",
         },
       });
-      toast.success("Evidence uploaded");
+      toast.success("File sent");
     } catch {
       toast.error("Upload failed");
     } finally {
@@ -266,12 +295,42 @@ export default function IncidentWarRoom() {
     }
   };
 
+  // 🔥 FIX: Correct Event Type for Input Change
+  const handleInputFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    uploadFiles(e.target.files);
+  };
+
+  const handleDeleteIncident = async () => {
+    if (
+      !confirm(
+        "Are you sure? This will delete the incident and all attachments permanently."
+      )
+    )
+      return;
+    try {
+      await axios.delete(`${API_URL}/incidents/${id}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      toast.success("Incident deleted");
+      router.push("/dashboard");
+    } catch {
+      toast.error("Delete failed. Permission denied.");
+    }
+  };
+
   const handleDeleteMessage = async (eventId: string) => {
-    if (!confirm("Delete this message?")) return;
+    if (!confirm("Delete message?")) return;
+
+    setIncident((prev: any) => ({
+      ...prev,
+      events: prev.events.filter((e: any) => e.id !== eventId),
+    }));
+
     try {
       await axios.delete(`${API_URL}/incidents/${id}/events/${eventId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
+      toast.success("Message deleted");
     } catch {
       toast.error("Failed to delete");
     }
@@ -284,33 +343,49 @@ export default function IncidentWarRoom() {
 
   const saveEdit = async () => {
     if (!editingEventId) return;
+
+    setIncident((prev: any) => ({
+      ...prev,
+      events: prev.events.map((e: any) =>
+        e.id === editingEventId ? { ...e, message: editMessageText } : e
+      ),
+    }));
+
     const tempId = editingEventId;
-    const text = editMessageText;
     setEditingEventId(null);
+
     try {
       await axios.put(
         `${API_URL}/incidents/${id}/events/${tempId}`,
-        { message: text },
+        { message: editMessageText },
         {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         }
       );
+      toast.success("Message updated");
     } catch {
       toast.error("Failed to update");
     }
   };
 
-  const updateStatus = async (status: Status) => {
+  const handleDeleteAttachment = async (attachmentId: string) => {
+    if (!confirm("Delete this attachment permanently?")) return;
+
+    setIncident((prev: any) => ({
+      ...prev,
+      attachments: prev.attachments.filter((a: any) => a.id !== attachmentId),
+    }));
+
     try {
-      await axios.patch(
-        `${API_URL}/incidents/${id}`,
-        { status },
+      await axios.delete(
+        `${API_URL}/incidents/${id}/attachments/${attachmentId}`,
         {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         }
       );
+      toast.success("Attachment deleted");
     } catch {
-      toast.error("Status update failed");
+      toast.error("Failed to delete attachment");
     }
   };
 
@@ -319,7 +394,38 @@ export default function IncidentWarRoom() {
     link.href = url;
     link.setAttribute("download", filename);
     link.target = "_blank";
+    document.body.appendChild(link);
     link.click();
+    link.remove();
+  };
+
+  const updateStatus = async (status: Status) => {
+    await axios.patch(
+      `${API_URL}/incidents/${id}`,
+      { status },
+      { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }
+    );
+  };
+
+  const handleAssignToMe = async () => {
+    try {
+      await axios.patch(
+        `${API_URL}/incidents/${id}`,
+        { assigneeId: currentUser.id },
+        {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        }
+      );
+      // Optimistic update
+      setIncident((prev: any) => ({
+        ...prev,
+        assignee: currentUser,
+        assigneeId: currentUser.id,
+      }));
+      toast.success("Assigned to you");
+    } catch {
+      toast.error("Assignment failed");
+    }
   };
 
   const isImage = (filename: string) =>
@@ -332,11 +438,16 @@ export default function IncidentWarRoom() {
       </div>
     );
 
+  // 🔒 Logic Constants
   const isResolved = incident.status === Status.RESOLVED;
+  const canDeleteIncident =
+    currentUser?.role === "ADMIN" ||
+    currentUser?.id === incident.reporter?.id ||
+    currentUser?.id === incident.reporterId;
 
   return (
     <div
-      className="flex h-screen bg-[#09090b] text-zinc-300"
+      className="flex flex-col h-screen bg-black text-zinc-200 font-sans"
       onDragOver={(e) => {
         e.preventDefault();
         if (!isResolved) setIsDragging(true);
@@ -344,263 +455,276 @@ export default function IncidentWarRoom() {
       onDragLeave={() => setIsDragging(false)}
       onDrop={(e) => {
         e.preventDefault();
-        uploadFiles(e.dataTransfer.files);
+        if (!isResolved && e.dataTransfer.files) {
+          uploadFiles(e.dataTransfer.files);
+        }
       }}
     >
-      {/* DRAG OVERLAY */}
       {isDragging && !isResolved && (
-        <div className="absolute inset-0 z-50 bg-blue-600/10 backdrop-blur-sm border-2 border-blue-500/50 border-dashed m-4 rounded-2xl flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4 animate-bounce">
-            <UploadCloud className="h-12 w-12 text-blue-500" />
-            <p className="text-blue-400 font-bold uppercase tracking-tighter">
-              Drop Evidence to Upload
-            </p>
+        <div className="absolute inset-0 z-50 bg-blue-600/20 backdrop-blur-sm border-4 border-blue-500 border-dashed m-4 rounded-xl flex items-center justify-center pointer-events-none">
+          <div className="text-blue-200 text-2xl font-bold flex flex-col items-center gap-4 animate-bounce">
+            <UploadCloud className="h-16 w-16" /> Drop to Upload Evidence
           </div>
         </div>
       )}
 
-      {/* LEFT SIDEBAR */}
-      <aside className="w-80 border-r border-zinc-800 bg-[#0c0c0e] hidden xl:flex flex-col">
-        <div className="p-6 border-b border-zinc-800">
+      {/* HEADER */}
+      <header className="h-16 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-950 z-20 relative">
+        <div className="flex items-center gap-4">
           <button
             onClick={() => router.push("/dashboard")}
-            className="flex items-center gap-2 text-zinc-500 hover:text-white transition mb-6"
+            className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400"
           >
-            <ChevronLeft className="h-4 w-4" />{" "}
-            <span className="text-[10px] font-black uppercase tracking-widest">
-              Dashboard
-            </span>
+            <ChevronLeft className="h-5 w-5" />
           </button>
-          <h2 className="text-lg font-bold text-white mb-2">
-            {incident.title}
-          </h2>
-          <div className="flex gap-2">
-            <span
-              className={`px-2 py-0.5 rounded text-[10px] font-bold ${incident.severity === "CRITICAL" ? "bg-red-500/20 text-red-500" : "bg-blue-500/20 text-blue-500"}`}
-            >
-              {incident.severity}
-            </span>
-            <SLACountdown
-              deadline={incident.slaDeadline}
-              status={incident.status}
-            />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-8">
-          <section>
-            <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <User className="h-3 w-3" /> Stakeholders
-            </h3>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded bg-blue-500/20 flex items-center justify-center text-blue-500 text-xs font-bold">
-                  {incident.reporter?.name?.charAt(0)}
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-zinc-200">
-                    {incident.reporter?.name}
-                  </p>
-                  <p className="text-[9px] text-zinc-600 uppercase">Reporter</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-500 text-xs font-bold">
-                  {incident.assignee?.name?.charAt(0) || "?"}
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-zinc-200">
-                    {incident.assignee?.name || "Unassigned"}
-                  </p>
-                  <p className="text-[9px] text-zinc-600 uppercase">
-                    Lead Engineer
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-          <section>
-            <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Hash className="h-3 w-3" /> Infrastructure
-            </h3>
-            <div className="text-[11px] space-y-2">
-              <div className="flex justify-between">
-                <span className="text-zinc-600">Team</span>
-                <span className="text-zinc-400">{incident.team?.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-600">Protocol</span>
-                <span className="text-zinc-400">WarRoom_v2.4</span>
-              </div>
-            </div>
-          </section>
-        </div>
-      </aside>
-
-      {/* MAIN CHAT */}
-      <main className="flex-1 flex flex-col relative bg-[#050505]">
-        <header className="h-16 border-b border-zinc-800 bg-[#09090b] flex items-center justify-between px-6 shrink-0 z-10">
-          <div className="flex items-center gap-3 xl:hidden">
-            <button onClick={() => router.push("/dashboard")}>
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <h1 className="font-bold text-sm text-white truncate max-w-[150px]">
-              {incident.title}
-            </h1>
-          </div>
-          <div className="hidden xl:block">
-            <span className="text-[10px] font-mono text-zinc-600">
-              WAR_ROOM_SESSION_ID: {incident.id.slice(0, 8)}
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            {isResolved ? (
-              <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded text-[10px] font-black uppercase flex items-center gap-2">
-                <CheckCircle2 className="h-3 w-3" /> Resolved
-              </div>
-            ) : (
-              <button
-                onClick={() => updateStatus(Status.RESOLVED)}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-[10px] font-black uppercase transition shadow-lg shadow-blue-600/20"
+          <div>
+            <div className="flex items-center gap-3">
+              <span className="text-zinc-500 font-mono">
+                #{incident.id.slice(0, 4)}
+              </span>
+              <h1 className="font-semibold text-white">{incident.title}</h1>
+              <span
+                className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${
+                  incident.severity === "CRITICAL"
+                    ? "bg-red-500/20 text-red-500"
+                    : incident.severity === "HIGH"
+                      ? "bg-orange-500/20 text-orange-500"
+                      : "bg-blue-500/20 text-blue-500"
+                }`}
               >
-                Mark Resolved
-              </button>
-            )}
+                {incident.severity}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-zinc-500 mt-0.5">
+              <Briefcase className="h-3 w-3" /> {incident.team?.name}
+              <span className="text-zinc-700">|</span>
+              <SLACountdown
+                deadline={incident.slaDeadline}
+                status={incident.status}
+              />
+            </div>
           </div>
-        </header>
+        </div>
+        <div className="flex items-center gap-3">
+          {!incident.assignee && !isResolved && (
+            <button
+              onClick={handleAssignToMe}
+              className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-sm transition"
+            >
+              Assign to Me
+            </button>
+          )}
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[radial-gradient(#1c1c1f_1px,transparent_1px)] [background-size:32px_32px]">
-          <div className="max-w-3xl mx-auto space-y-8">
-            <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-5 relative">
-              <div className="flex items-center gap-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-3">
-                <AlertTriangle className="h-3 w-3" /> Initial Briefing
+          {canDeleteIncident && (
+            <button
+              onClick={handleDeleteIncident}
+              className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-md transition border border-red-500/20"
+              title="Delete Incident"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+
+          {isResolved ? (
+            <div className="px-3 py-1.5 bg-emerald-950 border border-emerald-900 text-emerald-500 rounded-md text-sm font-bold flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4" /> Resolved
+            </div>
+          ) : (
+            <button
+              onClick={() => updateStatus(Status.RESOLVED)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2"
+            >
+              <CheckCircle2 className="h-4 w-4" /> Resolve
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* MAIN LAYOUT */}
+      <div className="flex-1 flex overflow-hidden">
+        <main className="flex-1 flex flex-col relative bg-black bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px]">
+          <div className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
+            <div className="flex justify-center">
+              <div className="bg-zinc-950/80 border border-zinc-800 backdrop-blur-sm rounded-lg p-3 max-w-2xl text-center shadow-lg">
+                <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">
+                  Initial Report
+                </p>
+                <p className="text-zinc-300 text-sm">{incident.description}</p>
               </div>
-              <p className="text-sm text-zinc-300 leading-relaxed">
-                {incident.description}
-              </p>
             </div>
 
             {timeline.map((item: any) => {
               const isMe = currentUser?.id === item.user?.id;
+
               const isSystem =
                 item.kind === "EVENT" &&
                 item.type !== "COMMENT" &&
                 item.type !== "EDITED";
 
-              if (isSystem)
+              if (isSystem) {
                 return (
-                  <div key={item.id} className="flex justify-center">
-                    <div className="px-4 py-1.5 rounded-full border border-zinc-800 bg-zinc-900/50 text-[10px] font-bold text-zinc-500 flex items-center gap-2">
-                      <Shield className="h-3 w-3 text-blue-500" />{" "}
-                      <span className="text-zinc-300">{item.user?.name}</span>{" "}
-                      {item.message}
+                  <div key={item.id} className="flex justify-center my-4">
+                    <div className="bg-zinc-900/80 backdrop-blur border border-zinc-800/50 px-3 py-1 rounded-full text-xs text-zinc-500 flex items-center gap-2">
+                      <Shield className="h-3 w-3" />
+                      <span className="text-zinc-300 font-bold">
+                        {item.user?.name}
+                      </span>
+                      <span>{item.message}</span>
+                      <span className="opacity-50">
+                        {format(new Date(item.createdAt), "h:mm a")}
+                      </span>
                     </div>
                   </div>
                 );
+              }
 
               return (
                 <div
                   key={item.id}
-                  className={`flex gap-4 group ${isMe ? "flex-row-reverse" : "flex-row"}`}
+                  className={`flex gap-3 group/msg ${isMe ? "flex-row-reverse" : "flex-row"}`}
                 >
                   <div
-                    className={`h-9 w-9 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 shadow-xl ${isMe ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-400"}`}
+                    className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 shadow-lg ${
+                      isMe
+                        ? "bg-blue-600 text-white"
+                        : "bg-zinc-800 text-zinc-400"
+                    }`}
                   >
                     {item.user?.name?.charAt(0).toUpperCase()}
                   </div>
+
                   <div
-                    className={`flex flex-col max-w-[80%] ${isMe ? "items-end" : "items-start"}`}
+                    className={`flex flex-col max-w-[65%] ${isMe ? "items-end" : "items-start"}`}
                   >
-                    <div className="flex items-center gap-2 mb-1 px-1 text-[10px] font-bold text-zinc-600 uppercase tracking-tighter">
-                      <span>{item.user?.name}</span> <span>•</span>{" "}
-                      <span>
-                        {format(new Date(item.createdAt), "HH:mm:ss")}
+                    <div className="flex items-baseline gap-2 mb-1 px-1">
+                      <span className="text-xs font-bold text-zinc-400">
+                        {item.user?.name}
                       </span>
+                      <span className="text-[10px] text-zinc-600">
+                        {format(new Date(item.createdAt), "h:mm a")}
+                      </span>
+                      {item.type === "EDITED" && (
+                        <span className="text-[10px] text-zinc-500 italic">
+                          (edited)
+                        </span>
+                      )}
                     </div>
+
                     {item.kind === "ATTACHMENT" ? (
-                      <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden group/file relative shadow-2xl">
+                      <div className="relative group overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 transition-all hover:border-zinc-700 shadow-md">
                         {isImage(item.filename) ? (
-                          <img
-                            src={item.url}
-                            alt="att"
-                            className="max-h-72 object-contain bg-black/40 cursor-zoom-in"
-                            onClick={() => window.open(item.url, "_blank")}
-                          />
+                          <div
+                            className="cursor-pointer relative"
+                            onClick={() =>
+                              handleDownload(item.url, item.filename)
+                            }
+                          >
+                            {/* 🔥 FIX: Suppress Next.js Image Warning */}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={item.url}
+                              alt="attachment"
+                              className="max-h-72 object-cover w-full"
+                            />
+                          </div>
                         ) : (
-                          <div className="p-4 flex items-center gap-4">
-                            <div className="h-10 w-10 bg-zinc-800 rounded flex items-center justify-center text-zinc-500">
-                              <FileText className="h-5 w-5" />
+                          <div
+                            className="flex items-center gap-3 p-4 cursor-pointer"
+                            onClick={() =>
+                              handleDownload(item.url, item.filename)
+                            }
+                          >
+                            <div className="bg-zinc-800 p-2 rounded">
+                              <FileText className="h-6 w-6 text-zinc-400" />
                             </div>
                             <div>
-                              <p className="text-xs font-bold text-zinc-200">
+                              <p className="text-sm font-medium text-zinc-200">
                                 {item.filename}
                               </p>
-                              <p className="text-[9px] text-zinc-600 font-mono">
-                                ENCRYPTED_BLOB
+                              <p className="text-xs text-zinc-500">
+                                Click to download
                               </p>
                             </div>
                           </div>
                         )}
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/file:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={() =>
                               handleDownload(item.url, item.filename)
                             }
-                            className="p-2 bg-white text-black rounded-full hover:scale-110 transition"
+                            className="bg-black/60 p-1.5 rounded text-white hover:bg-black/80"
                           >
                             <Download className="h-4 w-4" />
                           </button>
+                          {/* 🔥 Lock Actions if Resolved */}
+                          {!isResolved &&
+                            (isMe || currentUser?.role === "ADMIN") && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteAttachment(item.id);
+                                }}
+                                className="bg-red-900/80 p-1.5 rounded text-white hover:bg-red-800"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                         </div>
                       </div>
                     ) : (
                       <div className="relative group/bubble">
-                        <div
-                          className={`px-5 py-3 rounded-2xl text-[13px] leading-relaxed shadow-lg border ${isMe ? "bg-blue-600 border-blue-500 text-white rounded-tr-none" : "bg-[#18181b] border-zinc-800 text-zinc-200 rounded-tl-none"}`}
-                        >
-                          {editingEventId === item.id ? (
-                            <div className="flex flex-col gap-2 min-w-[250px]">
-                              <textarea
-                                value={editMessageText}
-                                onChange={(e) =>
-                                  setEditMessageText(e.target.value)
-                                }
-                                className="bg-black/20 rounded p-2 text-sm outline-none border border-white/20 resize-none h-20"
-                              />
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  onClick={() => setEditingEventId(null)}
-                                  className="p-1"
-                                >
-                                  <X className="h-4 w-4" />
-                                </button>
-                                <button
-                                  onClick={saveEdit}
-                                  className="p-1 text-emerald-400"
-                                >
-                                  <Check className="h-4 w-4" />
-                                </button>
-                              </div>
+                        {editingEventId === item.id ? (
+                          <div className="flex flex-col gap-2 bg-zinc-900 border border-zinc-700 p-2 rounded-xl min-w-[250px]">
+                            <textarea
+                              value={editMessageText}
+                              onChange={(e) =>
+                                setEditMessageText(e.target.value)
+                              }
+                              className="bg-zinc-950 p-2 rounded text-sm text-zinc-200 outline-none border border-zinc-800 focus:border-blue-600 w-full"
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => setEditingEventId(null)}
+                                className="p-1 text-zinc-400 hover:text-white"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={saveEdit}
+                                className="p-1 text-emerald-500 hover:text-emerald-400"
+                              >
+                                <Check className="h-4 w-4" />
+                              </button>
                             </div>
-                          ) : (
-                            <div className="prose prose-invert prose-sm max-w-none">
-                              <ReactMarkdown>{item.message}</ReactMarkdown>
-                            </div>
-                          )}
-                        </div>
-                        {isMe && !isResolved && !editingEventId && (
+                          </div>
+                        ) : (
                           <div
-                            className={`absolute top-0 flex items-center gap-1 opacity-0 group-hover/bubble:opacity-100 transition-opacity ${isMe ? "right-full mr-2" : "left-full ml-2"}`}
+                            className={`px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                              isMe
+                                ? "bg-blue-600 text-white rounded-tr-none"
+                                : "bg-zinc-800 text-zinc-200 rounded-tl-none"
+                            }`}
+                          >
+                            <ReactMarkdown>{item.message}</ReactMarkdown>
+                          </div>
+                        )}
+
+                        {/* 🔥 Lock Actions if Resolved */}
+                        {!editingEventId && isMe && !isResolved && (
+                          <div
+                            className={`absolute top-0 -right-16 opacity-0 group-hover/msg:opacity-100 flex items-center gap-1 transition-opacity ${isMe ? "right-auto -left-16" : "-right-16"}`}
                           >
                             <button
                               onClick={() => startEditing(item)}
-                              className="p-1.5 text-zinc-600 hover:text-white"
+                              className="p-1.5 hover:bg-zinc-800 rounded text-zinc-500 hover:text-zinc-300"
                             >
-                              <Pencil className="h-3 w-3" />
+                              <Pencil className="h-3.5 w-3.5" />
                             </button>
                             <button
                               onClick={() => handleDeleteMessage(item.id)}
-                              className="p-1.5 text-zinc-600 hover:text-red-500"
+                              className="p-1.5 hover:bg-zinc-800 rounded text-zinc-500 hover:text-red-400"
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
                         )}
@@ -610,130 +734,128 @@ export default function IncidentWarRoom() {
                 </div>
               );
             })}
-            <div ref={messagesEndRef} className="h-10" />
+            <div ref={messagesEndRef} />
           </div>
-        </div>
 
-        {/* INPUT BAR */}
-        <footer className="p-4 lg:p-6 bg-[#09090b] border-t border-zinc-800 shrink-0">
-          <div className="max-w-3xl mx-auto">
-            {isResolved ? (
-              <div className="flex flex-col items-center gap-2 py-6 border border-zinc-800 border-dashed rounded-2xl bg-zinc-900/20">
-                <Lock className="h-5 w-5 text-zinc-700" />
-                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                  Protocol Terminated - War Room Closed
-                </p>
+          {/* 🔥 CONDITIONAL INPUT AREA */}
+          {isResolved ? (
+            <div className="p-4 bg-black border-t border-zinc-800 z-20">
+              <div className="max-w-4xl mx-auto bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl flex items-center justify-center gap-3 text-zinc-400">
+                <Lock className="h-4 w-4 text-zinc-500" />
+                <span className="text-sm font-medium">
+                  This incident is resolved. Chat is read-only.
+                </span>
                 <button
                   onClick={() => updateStatus(Status.OPEN)}
-                  className="text-[10px] text-blue-500 font-bold hover:underline flex items-center gap-1"
+                  className="flex items-center gap-1 text-blue-500 hover:text-blue-400 hover:underline text-sm font-medium ml-2"
                 >
-                  <RotateCcw className="h-3 w-3" /> Reopen Incident
+                  <RotateCcw className="h-3 w-3" /> Reopen
                 </button>
               </div>
-            ) : (
-              <div className="relative group bg-[#0c0c0e] border border-zinc-800 rounded-2xl p-2 focus-within:border-zinc-600 transition shadow-2xl">
-                <div className="flex items-end gap-2">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    onChange={(e) => uploadFiles(e.target.files)}
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-3 text-zinc-500 hover:text-white transition rounded-xl hover:bg-zinc-800"
-                  >
-                    {isUploading ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <Paperclip className="h-5 w-5" />
-                    )}
-                  </button>
-                  <textarea
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
-                    placeholder="Type updates or share evidence..."
-                    className="flex-1 bg-transparent border-none focus:ring-0 text-white text-sm py-3 resize-none max-h-48 scrollbar-none"
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!newMessage.trim() || isUploading}
-                    className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-500 disabled:opacity-30 transition shadow-lg shadow-blue-600/20"
-                  >
-                    <Send className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
-            )}
-            <div className="mt-3 flex items-center justify-between px-2 text-[10px] font-bold text-zinc-700 uppercase tracking-widest">
-              <div className="flex gap-4">
-                <span>Socket: Active</span> <span>Encryption: AES-256</span>
-              </div>
-              <span>Markdown Enabled</span>
             </div>
-          </div>
-        </footer>
-      </main>
-
-      {/* RIGHT SIDEBAR */}
-      <aside className="w-80 border-l border-zinc-800 bg-[#0c0c0e] hidden 2xl:flex flex-col">
-        <div className="p-6 border-b border-zinc-800">
-          <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-4">
-            Evidence Vault
-          </h3>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-800 flex flex-col items-center">
-              <p className="text-xl font-bold text-white">
-                {incident.attachments?.length || 0}
-              </p>
-              <p className="text-[9px] text-zinc-600 uppercase font-bold">
-                Files
-              </p>
-            </div>
-            <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-800 flex flex-col items-center">
-              <p className="text-xl font-bold text-white">
-                {incident.events?.filter((e: any) => e.type === "COMMENT")
-                  .length || 0}
-              </p>
-              <p className="text-[9px] text-zinc-600 uppercase font-bold">
-                Log Entries
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {incident.attachments?.map((file: any) => (
-            <div
-              key={file.id}
-              className="group p-3 bg-zinc-900/50 border border-zinc-800 rounded-xl hover:border-zinc-700 transition cursor-pointer"
-              onClick={() => handleDownload(file.url, file.filename)}
-            >
-              <div className="flex items-center gap-3">
-                <FileText className="h-4 w-4 text-zinc-600 group-hover:text-blue-500 transition" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-bold text-zinc-400 truncate group-hover:text-white">
-                    {file.filename}
-                  </p>
-                  <p className="text-[9px] text-zinc-700 font-mono">
-                    {formatDistanceToNow(new Date(file.createdAt))} ago
-                  </p>
-                </div>
+          ) : (
+            <div className="p-4 bg-black border-t border-zinc-800 z-20">
+              <div className="max-w-4xl mx-auto flex items-end gap-3 bg-zinc-900 p-2 rounded-xl border border-zinc-800 focus-within:border-blue-500/50 transition-colors shadow-2xl">
+                {/* 🔥 FIX: Connected handleInputFileChange */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleInputFileChange}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                >
+                  {isUploading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Paperclip className="h-5 w-5" />
+                  )}
+                </button>
+                <textarea
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  placeholder="Type a message..."
+                  className="flex-1 bg-transparent border-none outline-none text-white text-sm min-h-[24px] max-h-32 py-2 resize-none placeholder-zinc-600"
+                />
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!newMessage.trim()}
+                  className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
               </div>
             </div>
-          ))}
-          {incident.attachments?.length === 0 && (
-            <p className="text-center text-[10px] text-zinc-700 py-10 uppercase font-bold tracking-widest">
-              No evidence stored
-            </p>
           )}
-        </div>
-      </aside>
+        </main>
+
+        <aside className="w-72 border-l border-zinc-800 bg-zinc-950 p-6 hidden lg:block z-20">
+          <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">
+            Incident Details
+          </h3>
+          <div className="space-y-4 text-sm">
+            <div className="flex justify-between">
+              <span className="text-zinc-500">ID</span>
+              <span className="font-mono text-zinc-300">
+                #{incident.id.slice(0, 6)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Status</span>
+              <span
+                className={
+                  incident.status === Status.RESOLVED
+                    ? "text-emerald-500 font-bold"
+                    : "text-blue-500"
+                }
+              >
+                {incident.status}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Assignee</span>
+              <span className="text-zinc-300">
+                {incident.assignee?.name || "Unassigned"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Reporter</span>
+              <span className="text-zinc-300">{incident.reporter?.name}</span>
+            </div>
+
+            <div className="pt-6 border-t border-zinc-800">
+              <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">
+                Evidence List
+              </h4>
+              <div className="space-y-2">
+                {incident.attachments.length === 0 && (
+                  <p className="text-xs text-zinc-600 italic">No files yet.</p>
+                )}
+                {incident.attachments.map((a: any) => (
+                  <a
+                    key={a.id}
+                    href={a.url}
+                    target="_blank"
+                    className="flex items-center gap-2 p-2 rounded hover:bg-zinc-900 transition text-zinc-400 hover:text-white truncate"
+                  >
+                    <FileText className="h-3 w-3 shrink-0" />
+                    <span className="text-xs truncate">{a.filename}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
