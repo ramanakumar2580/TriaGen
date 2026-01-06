@@ -6,11 +6,14 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
+  // 👇 CRITICAL FIX: Match the Nginx /api route
+  app.setGlobalPrefix('api');
+
   // 👇 FIX: Use the Environment Variable instead of hardcoded localhost
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
   app.enableCors({
-    origin: [frontendUrl], // 👈 Dynamically allows your live server OR localhost
+    origin: [frontendUrl],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
@@ -26,7 +29,7 @@ async function bootstrap() {
   const port = process.env.PORT || 4000;
   await app.listen(port, '0.0.0.0');
 
-  logger.log(`🚀 Server running on: http://0.0.0.0:${port}`);
-  logger.log(`Enable CORS for: ${frontendUrl}`); // Helpful log to see what's allowed
+  logger.log(`🚀 Server running on: http://0.0.0.0:${port}/api`); // Updated log
+  logger.log(`Enable CORS for: ${frontendUrl}`);
 }
 void bootstrap();
