@@ -6,18 +6,14 @@ RUN apk add --no-cache openssl python3 make g++ jq
 
 WORKDIR /app
 
-# 1. Copy the entire project first
+# 1. Copy everything
 COPY . .
 
-# 2. Enter API folder and Install Dependencies LOCALLY
-# This fixes the "Cannot find module" errors
-WORKDIR /app/apps/api
+# 2. Install dependencies (This puts them in /app/node_modules)
 RUN npm install
 
 # 3. Generate Prisma Client (Critical for database)
-# We go back to root if your prisma schema is in a shared spot, 
-# OR stay here if it is inside apps/api. 
-# Based on your logs, it looks like prisma is inside apps/api.
+WORKDIR /app/apps/api
 RUN npx prisma generate
 
 # 4. Build the API
@@ -31,12 +27,15 @@ RUN apk add --no-cache openssl
 
 WORKDIR /app
 
-# Copy the built files from the builder stage
+# 1. Copy the Root node_modules (This is the FIX: Accessing the real dependencies)
+COPY --from=builder /app/node_modules ./node_modules
+
+# 2. Copy the built API files
 COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/apps/api/node_modules ./node_modules
 COPY --from=builder /app/apps/api/package.json ./package.json
 COPY --from=builder /app/apps/api/prisma ./prisma
 
 EXPOSE 4000
 
+# Start the server (Using the find command to locate main.js automatically)
 CMD ["sh", "-c", "node $(find dist -name main.js | head -n 1)"]
