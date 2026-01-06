@@ -51,13 +51,15 @@ jobs:
             # 1. Create Network
             docker network create triagen_network || true
 
-            # 2. START REDIS (If not running)
+            # 2. START REDIS (Database Cache)
             if [ ! "$(docker ps -q -f name=triagen_redis)" ]; then
+              echo "Starting Redis..."
               docker run -d --name triagen_redis --network triagen_network --restart always redis:alpine
             fi
 
-            # 3. START DATABASE (If not running)
+            # 3. START POSTGRES (The Real Database)
             if [ ! "$(docker ps -q -f name=triagen_db)" ]; then
+              echo "Starting Database..."
               docker run -d --name triagen_db \
                 --network triagen_network \
                 --restart always \
@@ -66,11 +68,12 @@ jobs:
                 -e POSTGRES_DB=triagen_local \
                 postgres:15-alpine
               
-              echo "Waiting 15s for Database to initialize..."
+              echo "Waiting 15s for Database to wake up..."
               sleep 15
             fi
 
-            # 4. START API
+            # 4. START API (Backend)
+            echo "Starting API..."
             docker stop triagen_api || true
             docker rm triagen_api || true
             docker pull ${{ secrets.DOCKER_USERNAME }}/triagen-api:latest
@@ -91,12 +94,13 @@ jobs:
               -e AWS_BUCKET_NAME="${{ secrets.AWS_BUCKET_NAME }}" \
               ${{ secrets.DOCKER_USERNAME }}/triagen-api:latest
 
-            # 5. RUN MIGRATIONS (THIS IS THE CRITICAL MISSING STEP)
-            echo "Running Database Migrations..."
+            # 5. RUN MIGRATIONS (Fixes 'Access Denied' Error)
+            echo "Creating Database Tables..."
             sleep 5
             docker exec triagen_api npx prisma migrate deploy
 
-            # 6. START WEB
+            # 6. START WEB (Frontend)
+            echo "Starting Web..."
             docker stop triagen_web || true
             docker rm triagen_web || true
             docker pull ${{ secrets.DOCKER_USERNAME }}/triagen-web:latest
