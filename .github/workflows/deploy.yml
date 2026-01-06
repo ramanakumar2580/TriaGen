@@ -12,14 +12,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 1. Log in to Docker Hub (Requires the 2 new secrets you will add)
       - name: Login to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 2. Build and Push API
+      # 1. Build and Push API
       - name: Build and Push API
         uses: docker/build-push-action@v4
         with:
@@ -29,7 +28,7 @@ jobs:
           tags: ${{ secrets.DOCKER_USERNAME }}/triagen-api:latest
           platforms: linux/amd64
 
-      # 3. Build and Push Web
+      # 2. Build and Push Web
       - name: Build and Push Web
         uses: docker/build-push-action@v4
         with:
@@ -41,7 +40,7 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
 
-      # 4. Deploy to AWS Server via SSH
+      # 3. Deploy to AWS
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -49,24 +48,39 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Stop old containers
-            docker stop triagen_web triagen_api || true
-            docker rm triagen_web triagen_api || true
-
-            # Pull new images
-            docker pull ${{ secrets.DOCKER_USERNAME }}/triagen-api:latest
-            docker pull ${{ secrets.DOCKER_USERNAME }}/triagen-web:latest
-
-            # Ensure Network Exists
+            # 1. Create Network
             docker network create triagen_network || true
 
-            # START API (Using secrets from your screenshot + your .env values)
+            # 2. START REDIS (If not running)
+            if [ ! "$(docker ps -q -f name=triagen_redis)" ]; then
+              docker run -d --name triagen_redis --network triagen_network --restart always redis:alpine
+            fi
+
+            # 3. START DATABASE (If not running)
+            if [ ! "$(docker ps -q -f name=triagen_db)" ]; then
+              docker run -d --name triagen_db \
+                --network triagen_network \
+                --restart always \
+                -e POSTGRES_USER=admin \
+                -e POSTGRES_PASSWORD=password123 \
+                -e POSTGRES_DB=triagen_local \
+                postgres:15-alpine
+              
+              echo "Waiting 10s for Database to initialize..."
+              sleep 10
+            fi
+
+            # 4. START API
+            docker stop triagen_api || true
+            docker rm triagen_api || true
+            docker pull ${{ secrets.DOCKER_USERNAME }}/triagen-api:latest
+
             docker run -d \
               --name triagen_api \
               --network triagen_network \
               -p 4000:4000 \
               -e PORT=4000 \
-              -e DATABASE_URL="postgresql://admin:password123@postgres:5432/triagen_local?schema=public" \
+              -e DATABASE_URL="postgresql://admin:password123@triagen_db:5432/triagen_local?schema=public" \
               -e REDIS_HOST=triagen_redis \
               -e REDIS_PORT=6379 \
               -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
@@ -77,7 +91,11 @@ jobs:
               -e AWS_BUCKET_NAME="${{ secrets.AWS_BUCKET_NAME }}" \
               ${{ secrets.DOCKER_USERNAME }}/triagen-api:latest
 
-            # START WEB
+            # 5. START WEB
+            docker stop triagen_web || true
+            docker rm triagen_web || true
+            docker pull ${{ secrets.DOCKER_USERNAME }}/triagen-web:latest
+
             docker run -d \
               --name triagen_web \
               --network triagen_network \
@@ -85,5 +103,5 @@ jobs:
               -e NEXT_PUBLIC_API_URL="${{ secrets.NEXT_PUBLIC_API_URL }}" \
               ${{ secrets.DOCKER_USERNAME }}/triagen-web:latest
 
-            # Cleanup space
-            docker system prune -f
+            # Clean up old images, but NOT stopped containers (so we can debug if needed)
+            docker image prune -f
