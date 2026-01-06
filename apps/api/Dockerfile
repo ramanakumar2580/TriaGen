@@ -6,28 +6,22 @@ RUN apk add --no-cache openssl python3 make g++ jq
 
 WORKDIR /app
 
-COPY package*.json ./
-
-# Install ALL dependencies (including NestJS CLI)
-RUN npm install
-
-# Copy Prisma schema and generate client
-COPY apps/api/prisma ./prisma/
-RUN npx prisma@5.22.0 generate
-
-# Copy source code
+# 1. Copy the entire project first
 COPY . .
 
-# Fix package.json issues
-RUN jq 'del(.packageManager)' package.json > tmp.json && mv tmp.json package.json
-RUN jq 'del(.packageManager)' apps/web/package.json > tmp.json && mv tmp.json apps/web/package.json || true
-RUN jq 'del(.packageManager)' apps/api/package.json > tmp.json && mv tmp.json apps/api/package.json || true
-
-# Install NestJS CLI globally
-RUN npm install -g @nestjs/cli
-
-# Build the API
+# 2. Enter API folder and Install Dependencies LOCALLY
+# This fixes the "Cannot find module" errors
 WORKDIR /app/apps/api
+RUN npm install
+
+# 3. Generate Prisma Client (Critical for database)
+# We go back to root if your prisma schema is in a shared spot, 
+# OR stay here if it is inside apps/api. 
+# Based on your logs, it looks like prisma is inside apps/api.
+RUN npx prisma generate
+
+# 4. Build the API
+RUN npm install -g @nestjs/cli
 RUN nest build
 
 # --- Runner Stage ---
@@ -37,16 +31,12 @@ RUN apk add --no-cache openssl
 
 WORKDIR /app
 
-COPY package*.json ./
-
-# Copy node_modules from builder (Critical for NestJS to work)
-COPY --from=builder /app/node_modules ./node_modules
-
-# Copy built files
+# Copy the built files from the builder stage
 COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/apps/api/node_modules ./node_modules
+COPY --from=builder /app/apps/api/package.json ./package.json
+COPY --from=builder /app/apps/api/prisma ./prisma
 
 EXPOSE 4000
 
-CMD ["sh", "-c", "node $(find dist -name main.js | head -n 1)"]
+CMD ["node", "dist/main.js"]
