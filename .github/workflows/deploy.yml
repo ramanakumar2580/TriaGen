@@ -1,48 +1,89 @@
-name: Deploy TriaGen
+name: Deploy to AWS
+
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
+    branches: ["main"]
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 1. Log in to Docker Hub (Requires the 2 new secrets you will add)
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # 2. Build and Push API
+      - name: Build and Push API
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./apps/api/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/triagen-api:latest
+          platforms: linux/amd64
+
+      # 3. Build and Push Web
+      - name: Build and Push Web
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./apps/web/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/triagen-web:latest
+          platforms: linux/amd64
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+
+      # 4. Deploy to AWS Server via SSH
       - name: Deploy to EC2
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 30m
           script: |
-            cd ~/TriaGen
+            # Stop old containers
+            docker stop triagen_web triagen_api || true
+            docker rm triagen_web triagen_api || true
 
-            # 1. Clean up
-            docker system prune -af
+            # Pull new images
+            docker pull ${{ secrets.DOCKER_USERNAME }}/triagen-api:latest
+            docker pull ${{ secrets.DOCKER_USERNAME }}/triagen-web:latest
 
-            # 2. Get latest code
-            git pull origin main
+            # Ensure Network Exists
+            docker network create triagen_network || true
 
-            # 3. 🔥 CRITICAL FIX: Create ROOT .env file
-            # This allows 'docker-compose up' to see the variables!
-            echo "NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}" > .env
-            echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> .env
+            # START API (Using secrets from your screenshot + your .env values)
+            docker run -d \
+              --name triagen_api \
+              --network triagen_network \
+              -p 4000:4000 \
+              -e PORT=4000 \
+              -e DATABASE_URL="postgresql://admin:password123@postgres:5432/triagen_local?schema=public" \
+              -e REDIS_HOST=triagen_redis \
+              -e REDIS_PORT=6379 \
+              -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+              -e FRONTEND_URL="${{ secrets.FRONTEND_URL }}" \
+              -e AWS_REGION="${{ secrets.AWS_REGION }}" \
+              -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+              -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+              -e AWS_BUCKET_NAME="${{ secrets.AWS_BUCKET_NAME }}" \
+              ${{ secrets.DOCKER_USERNAME }}/triagen-api:latest
 
-            # 4. Setup Backend Environment
-            echo "PORT=4000" > apps/api/.env
-            echo "HOST=0.0.0.0" >> apps/api/.env
-            echo "NODE_ENV=production" >> apps/api/.env
-            echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> apps/api/.env
-            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> apps/api/.env
-            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> apps/api/.env
-            echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> apps/api/.env
-            echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> apps/api/.env
-            echo "AWS_REGION=${{ secrets.AWS_REGION }}" >> apps/api/.env
-            echo "AWS_BUCKET_NAME=${{ secrets.AWS_BUCKET_NAME }}" >> apps/api/.env
-            echo "REDIS_HOST=redis" >> apps/api/.env
-            echo "REDIS_PORT=6379" >> apps/api/.env
+            # START WEB
+            docker run -d \
+              --name triagen_web \
+              --network triagen_network \
+              -p 3000:3000 \
+              -e NEXT_PUBLIC_API_URL="${{ secrets.NEXT_PUBLIC_API_URL }}" \
+              ${{ secrets.DOCKER_USERNAME }}/triagen-web:latest
 
-            # 5. Build and Start (Now safe to rebuild!)
-            docker-compose down
-            docker-compose up -d --build --remove-orphans
+            # Cleanup space
+            docker system prune -f
