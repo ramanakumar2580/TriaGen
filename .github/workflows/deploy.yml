@@ -66,8 +66,8 @@ jobs:
                 -e POSTGRES_DB=triagen_local \
                 postgres:15-alpine
               
-              echo "Waiting 10s for Database to initialize..."
-              sleep 10
+              echo "Waiting 15s for Database to initialize..."
+              sleep 15
             fi
 
             # 4. START API
@@ -91,7 +91,12 @@ jobs:
               -e AWS_BUCKET_NAME="${{ secrets.AWS_BUCKET_NAME }}" \
               ${{ secrets.DOCKER_USERNAME }}/triagen-api:latest
 
-            # 5. START WEB
+            # 5. RUN MIGRATIONS (THIS IS THE CRITICAL MISSING STEP)
+            echo "Running Database Migrations..."
+            sleep 5
+            docker exec triagen_api npx prisma migrate deploy
+
+            # 6. START WEB
             docker stop triagen_web || true
             docker rm triagen_web || true
             docker pull ${{ secrets.DOCKER_USERNAME }}/triagen-web:latest
@@ -103,5 +108,4 @@ jobs:
               -e NEXT_PUBLIC_API_URL="${{ secrets.NEXT_PUBLIC_API_URL }}" \
               ${{ secrets.DOCKER_USERNAME }}/triagen-web:latest
 
-            # Clean up old images, but NOT stopped containers (so we can debug if needed)
-            docker image prune -f
+            docker system prune -f
