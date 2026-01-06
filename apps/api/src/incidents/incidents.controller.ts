@@ -21,8 +21,10 @@ import { CreateIncidentDto } from './dto/create-incident.dto';
 import { UpdateIncidentDto } from './dto/update-incident.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { User, Status, Severity } from '@prisma/client';
+import { Request as ExpressRequest } from 'express'; // 1. Import Express Request
 
-interface AuthenticatedRequest {
+// 2. Extend the base Request type
+interface AuthenticatedRequest extends ExpressRequest {
   user: User;
 }
 
@@ -76,9 +78,6 @@ export class IncidentsController {
     return this.incidentsService.remove(id, req.user);
   }
 
-  // ============================
-  // 🔥 Real-Time Evidence Upload
-  // ============================
   @Post(':id/attachments')
   @UseInterceptors(FileInterceptor('file'))
   async uploadEvidence(
@@ -86,22 +85,21 @@ export class IncidentsController {
     @UploadedFile() file: any,
     @Request() req: AuthenticatedRequest,
   ) {
-    // 1. Upload to S3 & DB
     const attachment = await this.filesService.uploadFile(
       file,
       id,
       req.user.id,
     );
 
-    // 2. Broadcast to everyone in the room!
+    // 3. Added optional chaining to prevent "cannot read emit of undefined"
+    // if the WebSocket server hasn't started yet.
     this.eventsGateway.server
-      .to(`incident:${id}`)
+      ?.to(`incident:${id}`)
       .emit('incident:new_attachment', attachment);
 
     return attachment;
   }
 
-  // 🔥 NEW: Delete Attachment Endpoint
   @Delete(':id/attachments/:attachmentId')
   removeAttachment(
     @Param('id') id: string,

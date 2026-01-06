@@ -47,9 +47,7 @@ export class IncidentsService {
       if (team) teamId = team.id;
     }
 
-    if (!teamId) {
-      teamId = user.teamId;
-    }
+    if (!teamId) teamId = user.teamId;
 
     let slaHours = 48;
     if (dto.severity === Severity.CRITICAL) slaHours = 1;
@@ -78,23 +76,15 @@ export class IncidentsService {
     });
 
     const delay = slaHours * 60 * 60 * 1000;
-
     await this.incidentsQueue.add(
       'check-sla',
       { incidentId: incident.id },
-      {
-        delay: delay,
-        jobId: `sla-${incident.id}`,
-        removeOnComplete: true,
-      },
-    );
-    this.logger.log(
-      `Scheduled SLA check for Incident #${incident.id} in ${slaHours} hours`,
+      { delay, jobId: `sla-${incident.id}`, removeOnComplete: true },
     );
 
     await this.escalationService.scheduleEscalation(incident.id);
 
-    // 🔥 FIX: Broadcast to "general" room so all Dashboards update instantly
+    // Broadcast creation
     this.eventsGateway.broadcastIncident(incident);
 
     if (incident.teamId) {
@@ -113,15 +103,11 @@ export class IncidentsService {
     },
   ) {
     const whereClause: Prisma.IncidentWhereInput = {};
-
     if (filters.status) whereClause.status = filters.status;
     if (filters.severity) whereClause.severity = filters.severity;
-
-    if (filters.tab === 'mine') {
-      whereClause.assigneeId = user.id;
-    } else if (filters.tab === 'team' && user.teamId) {
+    if (filters.tab === 'mine') whereClause.assigneeId = user.id;
+    else if (filters.tab === 'team' && user.teamId)
       whereClause.teamId = user.teamId;
-    }
 
     return this.prisma.incident.findMany({
       where: whereClause,
@@ -143,9 +129,7 @@ export class IncidentsService {
         assignee: { select: { id: true, name: true, email: true } },
         team: true,
         attachments: {
-          include: {
-            uploadedBy: { select: { id: true, name: true } },
-          },
+          include: { uploadedBy: { select: { id: true, name: true } } },
         },
         events: {
           include: { user: { select: { name: true, id: true } } },
@@ -169,28 +153,21 @@ export class IncidentsService {
 
     if (dto.version !== undefined && oldIncident.version !== dto.version) {
       throw new ConflictException(
-        'The incident has been modified by another process. Please refresh.',
+        'Conflict: Incident modified by another process.',
       );
     }
 
     const incident = await this.prisma.incident.update({
-      where: {
-        id,
-        version: oldIncident.version,
-      },
-      data: {
-        ...dto,
-        version: { increment: 1 },
-      },
+      where: { id, version: oldIncident.version },
+      data: { ...dto, version: { increment: 1 } },
       include: {
         assignee: { select: { id: true, name: true, email: true } },
         reporter: { select: { id: true, name: true } },
       },
     });
 
-    this.eventsGateway.server
-      .to(`incident:${id}`)
-      .emit('incident:updated', incident);
+    // Use clean gateway method instead of .server.to
+    this.eventsGateway.broadcastIncidentUpdate(id, incident);
 
     if (dto.status && dto.status !== oldIncident.status) {
       await this.eventsService.createEvent(
@@ -199,7 +176,6 @@ export class IncidentsService {
         EventType.STATUS_CHANGE,
         `changed status to ${dto.status}`,
       );
-
       if (dto.status === Status.RESOLVED || dto.status === Status.CLOSED) {
         await this.escalationService.cancelEscalation(id);
       }
@@ -218,29 +194,6 @@ export class IncidentsService {
     return incident;
   }
 
-  async remove(id: string, user: User) {
-    const incident = await this.prisma.incident.findUnique({ where: { id } });
-    if (!incident) throw new NotFoundException('Incident not found');
-
-    const isOwner = incident.reporterId === user.id;
-    const isAdmin = user.role === Role.ADMIN;
-
-    if (!isAdmin && !isOwner) {
-      throw new ForbiddenException(
-        'You do not have permission to delete this incident',
-      );
-    }
-
-    const attachments = await this.prisma.attachment.findMany({
-      where: { incidentId: id },
-    });
-    await Promise.all(
-      attachments.map((file) => this.filesService.deleteFile(file.fileKey)),
-    );
-
-    return this.prisma.incident.delete({ where: { id } });
-  }
-
   async addEvent(
     incidentId: string,
     user: User,
@@ -248,18 +201,11 @@ export class IncidentsService {
     message: string,
   ) {
     const event = await this.prisma.incidentEvent.create({
-      data: {
-        incidentId,
-        userId: user.id,
-        type: type as EventType,
-        message,
-      },
+      data: { incidentId, userId: user.id, type: type as EventType, message },
       include: { user: { select: { name: true, id: true } } },
     });
 
-    this.eventsGateway.server
-      .to(`incident:${incidentId}`)
-      .emit('newComment', event);
+    this.eventsGateway.broadcastToWarRoom(incidentId, event);
     return event;
   }
 
@@ -267,11 +213,9 @@ export class IncidentsService {
     const event = await this.prisma.incidentEvent.findUnique({
       where: { id: eventId },
     });
-
     if (!event) throw new NotFoundException('Event not found');
-    if (event.userId !== userId) {
+    if (event.userId !== userId)
       throw new ForbiddenException('You can only edit your own comments');
-    }
 
     const updated = await this.prisma.incidentEvent.update({
       where: { id: eventId },
@@ -279,13 +223,10 @@ export class IncidentsService {
       include: { user: { select: { name: true, id: true } } },
     });
 
-    this.eventsGateway.server
-      .to(`incident:${event.incidentId}`)
-      .emit('newComment', {
-        ...updated,
-        type: 'EDITED',
-      });
-
+    this.eventsGateway.broadcastToWarRoom(event.incidentId, {
+      ...updated,
+      type: 'EDITED',
+    });
     return updated;
   }
 
@@ -293,21 +234,15 @@ export class IncidentsService {
     const event = await this.prisma.incidentEvent.findUnique({
       where: { id: eventId },
     });
-
     if (!event) throw new NotFoundException('Event not found');
-    if (event.userId !== userId) {
+    if (event.userId !== userId)
       throw new ForbiddenException('You can only delete your own comments');
-    }
 
     await this.prisma.incidentEvent.delete({ where: { id: eventId } });
-
-    this.eventsGateway.server
-      .to(`incident:${event.incidentId}`)
-      .emit('newComment', {
-        type: 'DELETED',
-        id: eventId,
-      });
-
+    this.eventsGateway.broadcastToWarRoom(event.incidentId, {
+      type: 'DELETED',
+      id: eventId,
+    });
     return { success: true };
   }
 
@@ -320,19 +255,30 @@ export class IncidentsService {
     const attachment = await this.prisma.attachment.findUnique({
       where: { id: attachmentId },
     });
-
     if (!attachment) throw new NotFoundException('Attachment not found');
 
     await this.filesService.deleteFile(attachment.fileKey);
+    await this.prisma.attachment.delete({ where: { id: attachmentId } });
 
-    await this.prisma.attachment.delete({
-      where: { id: attachmentId },
-    });
-
-    this.eventsGateway.server
-      .to(`incident:${incidentId}`)
-      .emit('incident:attachment_removed', { id: attachmentId });
-
+    this.eventsGateway.broadcastAttachmentRemoval(incidentId, attachmentId);
     return { success: true };
+  }
+
+  async remove(id: string, user: User) {
+    const incident = await this.prisma.incident.findUnique({ where: { id } });
+    if (!incident) throw new NotFoundException('Incident not found');
+
+    if (user.role !== Role.ADMIN && incident.reporterId !== user.id) {
+      throw new ForbiddenException('Permission denied');
+    }
+
+    const attachments = await this.prisma.attachment.findMany({
+      where: { incidentId: id },
+    });
+    await Promise.all(
+      attachments.map((file) => this.filesService.deleteFile(file.fileKey)),
+    );
+
+    return this.prisma.incident.delete({ where: { id } });
   }
 }
