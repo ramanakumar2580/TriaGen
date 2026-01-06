@@ -39,4 +39,4 @@ COPY --from=builder /app/apps/api/prisma ./prisma
 
 EXPOSE 4000
 
-CMD ["node", "dist/main.js"]
+CMD ["sh", "-c", "node $(find dist -name main.js | head -n 1)"]
