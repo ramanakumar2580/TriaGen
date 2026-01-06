@@ -6,6 +6,7 @@ import {
   ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
@@ -21,17 +22,28 @@ interface UserPayload {
 }
 
 // 2. Define Authenticated Socket
-interface SocketWithAuth extends Socket {
+export interface SocketWithAuth extends Socket {
   user: UserPayload;
 }
 
 @WebSocketGateway({
-  cors: { origin: '*' },
-  transports: ['websocket'], // Force websocket for better performance
+  cors: {
+    origin: '*', // Allow connections from any origin (Mobile, Web, Postman)
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+  // 🔥 AWS & Performance Optimization:
+  // Allow 'polling' for fast initial connect, then upgrade to 'websocket'
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000, // 60s timeout to prevent AWS LB from closing connection
+  pingInterval: 25000, // Send heartbeat every 25s
 })
-export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class EventsGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
+{
   @WebSocketServer()
   server: Server;
+
   private logger = new Logger('EventsGateway');
 
   constructor(
@@ -39,69 +51,86 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private configService: ConfigService,
   ) {}
 
+  afterInit() {
+    this.logger.log('🚀 WebSocket Gateway Initialized');
+  }
+
   // --- AUTHENTICATION HANDLER ---
   async handleConnection(client: Socket) {
     try {
-      const headers = client.handshake.headers as { authorization?: string };
+      // 1. Extract Token from Auth Object (Client) or Headers (Postman)
       const auth = client.handshake.auth as { token?: string };
+      const headers = client.handshake.headers as { authorization?: string };
 
-      const authHeader = headers.authorization;
-      const authToken = auth.token;
-      const token = authToken || (authHeader ? authHeader.split(' ')[1] : null);
+      let token = auth.token;
+      if (!token && headers.authorization) {
+        const parts = headers.authorization.split(' ');
+        if (parts.length === 2) token = parts[1];
+      }
 
       if (!token) {
-        this.logger.warn(`Client ${client.id} tried to connect without token.`);
+        this.logger.warn(
+          `⚠️ Client ${client.id} tried to connect without token.`,
+        );
         client.disconnect();
         return;
       }
 
+      // 2. Verify Token
       const payload = this.jwtService.verify<UserPayload>(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
 
-      // Attach user to socket
+      // 3. Attach user to socket
       (client as SocketWithAuth).user = payload;
 
-      this.logger.log(`✅ User ${payload.email} connected (ID: ${client.id})`);
+      this.logger.log(`✅ User Connected: ${payload.email} (ID: ${client.id})`);
 
-      // Auto-Join Team Room
+      // 4. 🔥 CRITICAL: Auto-Join Team Room
+      // This ensures User B receives updates for their team immediately
       if (payload.teamId) {
         const teamRoom = `team:${payload.teamId}`;
         await client.join(teamRoom);
-        this.logger.log(`📢 User joined Team Room: ${teamRoom}`);
+        this.logger.log(
+          `📢 User ${payload.email} joined Team Room: ${teamRoom}`,
+        );
+      } else {
+        this.logger.warn(`⚠️ User ${payload.email} has no Team ID!`);
       }
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : 'Unknown authentication error';
-      this.logger.error(`❌ Connection rejected: ${errorMessage}`);
+      this.logger.error(
+        `❌ Connection rejected for ${client.id}: ${errorMessage}`,
+      );
       client.disconnect();
     }
   }
 
   handleDisconnect(client: Socket) {
-    this.logger.log(`Client disconnected: ${client.id}`);
+    this.logger.log(`🔌 Client disconnected: ${client.id}`);
   }
 
   // =========================================================
-  // 🔥 FIX: Match the Frontend 'joinRoom' event exactly
+  // 🎯 Room Management
   // =========================================================
+
+  // Frontend calls this to listen to a specific incident
   @SubscribeMessage('joinRoom')
   handleJoinRoom(
     @MessageBody() room: string, // Expects "incident:123"
     @ConnectedSocket() client: SocketWithAuth,
   ) {
-    // Basic cleanup just in case
-    const safeRoom = String(room).replace(/"/g, '');
+    const safeRoom = String(room).replace(/"/g, ''); // Cleanup quotes
 
     void client.join(safeRoom);
 
     this.logger.log(
-      `👤 User ${client.user?.email ?? 'Unknown'} joined room: ${safeRoom}`,
+      `👀 User ${client.user?.email ?? 'Unknown'} joined specific room: ${safeRoom}`,
     );
     return { event: 'joined', room: safeRoom };
   }
 
-  // (Optional) Leave Room
   @SubscribeMessage('leaveRoom')
   handleLeaveRoom(
     @MessageBody() room: string,
@@ -109,10 +138,11 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const safeRoom = String(room).replace(/"/g, '');
     void client.leave(safeRoom);
+    this.logger.log(`👋 Client left room: ${safeRoom}`);
     return { event: 'left', room: safeRoom };
   }
 
-  // --- Keep legacy handlers if other parts of your app use them ---
+  // Legacy support (optional)
   @SubscribeMessage('joinIncident')
   handleJoinIncident(
     @MessageBody() data: any,

@@ -99,7 +99,7 @@ export default function Dashboard() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL;
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
   const socketRef = useRef<Socket | null>(null);
 
   // Helper to change tabs via URL
@@ -118,25 +118,29 @@ export default function Dashboard() {
     }
   };
 
+  // 1. INITIAL LOAD & AUTH CHECK
   useEffect(() => {
-    const token = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
+    const token = localStorage.getItem("token");
 
     if (!token || !storedUser) {
       router.push("/login");
       return;
     }
+    setUser(JSON.parse(storedUser));
+  }, [router]);
 
-    const parsedUser = JSON.parse(storedUser);
-    setUser(parsedUser);
+  // 2. FETCH DATA (Runs when Tab changes)
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
 
     const fetchIncidents = async () => {
       setLoading(true);
       try {
-        // Send 'tab' param to Backend so it knows what to filter!
         const res = await axios.get(`${API_URL}/incidents`, {
           headers: { Authorization: `Bearer ${token}` },
-          params: { tab: activeTab.toLowerCase() }, // 'all', 'mine', or 'team'
+          params: { tab: activeTab.toLowerCase() },
         });
         setIncidents(res.data);
       } catch (error) {
@@ -148,75 +152,91 @@ export default function Dashboard() {
     };
 
     fetchIncidents();
+  }, [API_URL, activeTab]);
 
-    if (!socketRef.current) {
-      socketRef.current = io(API_URL, {
-        auth: { token },
-        transports: ["websocket"],
+  // 3. SOCKET CONNECTION (Runs ONCE - Does not disconnect on Tab switch)
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const storedUser = localStorage.getItem("user");
+
+    if (!token || !storedUser || socketRef.current) return;
+
+    const currentUser = JSON.parse(storedUser);
+
+    // 🔥 FIX: Enable Polling + Websocket to match Backend
+    socketRef.current = io(API_URL, {
+      auth: { token },
+      transports: ["websocket", "polling"],
+      withCredentials: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    const socket = socketRef.current;
+
+    socket.on("connect", () =>
+      console.log("✅ Connected to Command Center Socket:", socket.id)
+    );
+
+    socket.on("connect_error", (err) =>
+      console.error("❌ Socket Connection Error:", err.message)
+    );
+
+    // --- EVENT HANDLERS ---
+
+    // A. Incident Created
+    socket.on("incident:created", (payload: any) => {
+      console.log("🔔 Socket Event Received:", payload);
+
+      // If I created it, ignore (Axios handled it already)
+      if (payload.reporterId === currentUser.id) return;
+
+      toast.message("🚨 New Incident Alert", {
+        description: `${payload.severity}: ${payload.title}`,
+        icon: <ShieldAlert className="h-5 w-5 text-red-500" />,
+        duration: 5000,
       });
 
-      const socket = socketRef.current;
-      socket.on("connect", () =>
-        console.log("✅ Connected to Command Center Socket")
+      // Add to list safely
+      setIncidents((prev) => {
+        if (prev.find((i) => i.id === payload.id)) return prev;
+        return [payload, ...prev];
+      });
+    });
+
+    // B. Incident Assigned
+    socket.on("incident:assigned", (payload: any) => {
+      setIncidents((prev) =>
+        prev.map((inc) => (inc.id === payload.id ? payload : inc))
       );
 
-      // --- SOCKET EVENT HANDLERS ---
+      const isAssignedToMe = payload.assignee?.id === currentUser.id;
 
-      // 1. Incident Created
-      socket.on("incident:created", (payload: any) => {
-        // Logic: Don't notify if *I* created it (to avoid double toast)
-        if (payload.reporterId === parsedUser.id) return;
-
-        toast.message("🚨 New Incident Alert", {
-          description: `${payload.severity}: ${payload.title}`,
-          icon: <ShieldAlert className="h-5 w-5 text-red-500" />,
-          duration: 6000,
+      if (isAssignedToMe) {
+        toast.message("👮 You have been assigned!", {
+          description: `You are now handling "${payload.title}"`,
+          icon: <Briefcase className="h-5 w-5 text-blue-500" />,
+          duration: 5000,
         });
-
-        // Add to list if not already there
-        setIncidents((prev) => {
-          if (prev.find((i) => i.id === payload.id)) return prev;
-          return [payload, ...prev];
+      } else {
+        toast.message("Incident Assigned", {
+          description: `${payload.assignee?.name || "Responder"} is handling "${payload.title}"`,
+          icon: <Briefcase className="h-5 w-5 text-zinc-400" />,
+          duration: 3000,
         });
-      });
+      }
+    });
 
-      // 2. Incident Assigned (The Fix for Notifications)
-      socket.on("incident:assigned", (payload: any) => {
-        // Update the list immediately
-        setIncidents((prev) =>
-          prev.map((inc) => (inc.id === payload.id ? payload : inc))
-        );
-
-        // Logic: Who was assigned?
-        const isAssignedToMe = payload.assignee?.id === parsedUser.id;
-
-        if (isAssignedToMe) {
-          // Case A: I was assigned
-          toast.message("👮 You have been assigned!", {
-            description: `You are now handling "${payload.title}"`,
-            icon: <Briefcase className="h-5 w-5 text-blue-500" />,
-            duration: 6000,
-          });
-        } else {
-          // Case B: Someone else was assigned
-          toast.message("Incident Assigned", {
-            description: `${payload.assignee?.name || "A Responder"} is now handling "${payload.title}"`,
-            icon: <Briefcase className="h-5 w-5 text-zinc-400" />,
-            duration: 6000,
-          });
-        }
-      });
-    }
-
+    // Cleanup only on unmount (Logout/Close Tab)
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, [router, API_URL, activeTab]);
+  }, [API_URL]); // Empty dependency array ensures it persists across tab switches
 
-  // 🔍 Client-side filtering (Search, Status, Severity)
+  // 🔍 Client-side filtering
   const filteredIncidents = useMemo(() => {
     return incidents.filter((incident) => {
       const safeTitle = incident.title ? incident.title.toLowerCase() : "";
@@ -258,18 +278,12 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      // Add to list if we are in ALL view or if it matches current view criteria
-      if (
-        activeTab === "ALL" ||
-        (activeTab === "TEAM" && user?.team?.name === formData.teamName)
-      ) {
-        // 🔥 FIX: Deduplication Logic
-        setIncidents((prev) => {
-          const exists = prev.find((i) => i.id === res.data.id);
-          if (exists) return prev; // If socket added it already, do nothing
-          return [res.data, ...prev]; // Otherwise, add it manually
-        });
-      }
+      // Optimistically add to list (only if it matches current logic)
+      setIncidents((prev) => {
+        const exists = prev.find((i) => i.id === res.data.id);
+        if (exists) return prev;
+        return [res.data, ...prev];
+      });
 
       setIsModalOpen(false);
       setFormData({
@@ -291,6 +305,7 @@ export default function Dashboard() {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    if (socketRef.current) socketRef.current.disconnect();
     router.push("/login");
   };
 
