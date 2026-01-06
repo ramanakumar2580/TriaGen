@@ -1,41 +1,50 @@
 # --- Builder Stage ---
 FROM node:20-alpine AS builder
 
-# 1. Install libc6-compat (Required for Next.js on Alpine)
-RUN apk add --no-cache libc6-compat
+# 1. Install dependencies + jq + libc6-compat
+RUN apk add --no-cache libc6-compat jq
 
 WORKDIR /app
 
 COPY package*.json ./
+# Install dependencies (including dev dependencies)
 RUN npm install --legacy-peer-deps
 
 COPY . .
 
-# 🔥 CRITICAL FIX: Remove "packageManager" field to prevent Yarn/NPM conflict
-# This deletes the line from both the root and the web package.json
-RUN sed -i '/"packageManager":/d' ./package.json || true
-RUN sed -i '/"packageManager":/d' ./apps/web/package.json || true
+# 🔥 FIX 1: Delete "packageManager" to stop conflicts
+RUN jq 'del(.packageManager)' package.json > tmp.json && mv tmp.json package.json
+RUN jq 'del(.packageManager)' apps/web/package.json > tmp.json && mv tmp.json apps/web/package.json || true
 
-# 2. Accept API URL (Passed via --build-arg during docker build)
+# 2. Accept API URL
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_TELEMETRY_DISABLED 1
 
-# 3. Build the Next.js app
-RUN npm run build
+# 🔥 FIX 2: Manually install the missing Alpine binary
+# This fixes the "lightningcss.linux-x64-musl.node" error
+RUN npm install lightningcss-linux-x64-musl --cpu=x64 --os=linux --libc=musl --save-optional
+
+# 🔥 FIX 3: Build Next.js
+WORKDIR /app/apps/web
+RUN npx next build
 
 # --- Runner Stage ---
 FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# 4. Set production environment (Fixed format)
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED 1
 
-# 5. Copy necessary files from builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-# Note: Next.js 'standalone' mode copies package.json and node_modules auto-magically
+# Capture the ARG as an ENV again for the runner
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+# 3. Copy necessary files
+COPY --from=builder /app/apps/web/public ./public
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/.next/static ./.next/static
 
 EXPOSE 3000
 
