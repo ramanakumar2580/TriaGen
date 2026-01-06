@@ -32,7 +32,7 @@ export default function LandingPage() {
           className="group relative px-6 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-full transition-all flex items-center gap-2 overflow-hidden"
         >
           <span className="relative z-10 text-sm font-semibold text-zinc-300 group-hover:text-white">
-            Access Console
+            Login Console
           </span>
           <ArrowRight className="h-4 w-4 text-zinc-500 group-hover:text-blue-400 transition-colors relative z-10" />
           <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -92,7 +92,7 @@ export default function LandingPage() {
           {/* ✅ FIXED: Link points to /signup instead of /register */}
           <Link href="/signup" className="w-full sm:w-auto">
             <button className="h-14 px-10 rounded-xl bg-white text-black font-bold text-lg hover:bg-zinc-200 transition-all w-full sm:w-auto flex items-center justify-center gap-2 shadow-[0_0_40px_-10px_rgba(255,255,255,0.3)] hover:scale-[1.02]">
-              Deploy Workspace{" "}
+              SignUp to Deploy Workspace{" "}
               <Zap className="h-5 w-5 text-amber-500 fill-amber-500" />
             </button>
           </Link>
