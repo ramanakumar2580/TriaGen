@@ -154,60 +154,39 @@ export default function Dashboard() {
     fetchIncidents();
   }, [API_URL, activeTab]);
 
-  // 3. SOCKET CONNECTION (FIXED FOR SERVER SYNC)
+  // 3. SOCKET CONNECTION (Runs ONCE - Does not disconnect on Tab switch)
   useEffect(() => {
     const token = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
 
-    if (!token || !storedUser) return;
-
-    // Prevent multiple connections
-    if (socketRef.current?.connected) return;
+    if (!token || !storedUser || socketRef.current) return;
 
     const currentUser = JSON.parse(storedUser);
 
-    // 🛠 FIX: Improved Socket Config for Production/Server Environment
-    // If your API_URL has a path (e.g. /api), socket.io needs the root URL usually,
-    // unless you configured 'path' on backend.
+    // 🔥 FIX: Enable Polling + Websocket to match Backend
     socketRef.current = io(API_URL, {
       auth: { token },
-      // 'websocket' first ensures faster connection on modern servers, falls back to polling
       transports: ["websocket", "polling"],
       withCredentials: true,
-      reconnection: true,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      autoConnect: true,
     });
 
     const socket = socketRef.current;
 
-    socket.on("connect", () => {
-      console.log("✅ Connected to Command Center Socket:", socket.id);
-      // Optional: If your backend uses rooms, join them here
-      // socket.emit('join', 'dashboard_room');
-    });
+    socket.on("connect", () =>
+      console.log("✅ Connected to Command Center Socket:", socket.id)
+    );
 
-    socket.on("disconnect", (reason) => {
-      console.warn("⚠️ Socket Disconnected:", reason);
-      if (reason === "io server disconnect") {
-        // the disconnection was initiated by the server, you need to reconnect manually
-        socket.connect();
-      }
-    });
-
-    socket.on("connect_error", (err) => {
-      console.error("❌ Socket Connection Error:", err.message);
-      // If authentication fails, maybe logout?
-      // if (err.message === "Authentication error") handleLogout();
-    });
+    socket.on("connect_error", (err) =>
+      console.error("❌ Socket Connection Error:", err.message)
+    );
 
     // --- EVENT HANDLERS ---
 
     // A. Incident Created
     socket.on("incident:created", (payload: any) => {
-      console.log("🔔 Socket Event Received (Created):", payload);
+      console.log("🔔 Socket Event Received:", payload);
 
       // If I created it, ignore (Axios handled it already)
       if (payload.reporterId === currentUser.id) return;
@@ -220,7 +199,6 @@ export default function Dashboard() {
 
       // Add to list safely
       setIncidents((prev) => {
-        // Prevent duplicates
         if (prev.find((i) => i.id === payload.id)) return prev;
         return [payload, ...prev];
       });
@@ -228,8 +206,6 @@ export default function Dashboard() {
 
     // B. Incident Assigned
     socket.on("incident:assigned", (payload: any) => {
-      console.log("🔔 Socket Event Received (Assigned):", payload);
-
       setIncidents((prev) =>
         prev.map((inc) => (inc.id === payload.id ? payload : inc))
       );
@@ -251,26 +227,14 @@ export default function Dashboard() {
       }
     });
 
-    // C. Incident Status Update (Added just in case backend emits this)
-    socket.on("incident:updated", (payload: any) => {
-      setIncidents((prev) =>
-        prev.map((inc) =>
-          inc.id === payload.id ? { ...inc, ...payload } : inc
-        )
-      );
-    });
-
     // Cleanup only on unmount (Logout/Close Tab)
     return () => {
       if (socketRef.current) {
-        socketRef.current.off("incident:created");
-        socketRef.current.off("incident:assigned");
-        socketRef.current.off("incident:updated");
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, [API_URL]);
+  }, [API_URL]); // Empty dependency array ensures it persists across tab switches
 
   // 🔍 Client-side filtering
   const filteredIncidents = useMemo(() => {

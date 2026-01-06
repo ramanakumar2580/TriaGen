@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import axios from "axios";
 import { io, Socket } from "socket.io-client";
@@ -97,30 +97,30 @@ export default function IncidentWarRoom() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+  const API_URL = process.env.NEXT_PUBLIC_API_URL;
   const socketRef = useRef<Socket | null>(null);
 
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
-  }, []);
+  };
 
   // --- MERGE LOGIC ---
   const timeline = useMemo(() => {
     if (!incident) return [];
 
-    const chatEvents = (incident.events || []).map((e: any) => ({
+    const chatEvents = incident.events.map((e: any) => ({
       ...e,
       kind: "EVENT",
       sortTime: new Date(e.createdAt).getTime(),
     }));
 
-    const fileEvents = (incident.attachments || []).map((a: any) => ({
+    const fileEvents = incident.attachments.map((a: any) => ({
       ...a,
       kind: "ATTACHMENT",
       sortTime: new Date(a.createdAt).getTime(),
-      user: a.uploadedBy || { name: "System", id: "system" },
+      user: a.uploadedBy || { name: "Unknown", id: "unknown" },
       message: `Uploaded ${a.filename}`,
     }));
 
@@ -139,7 +139,7 @@ export default function IncidentWarRoom() {
         scrollToBottom("smooth");
       }
     }
-  }, [timeline, isInitialLoad, scrollToBottom]);
+  }, [timeline, isInitialLoad]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -150,7 +150,6 @@ export default function IncidentWarRoom() {
     }
     if (userStr) setCurrentUser(JSON.parse(userStr));
 
-    // Initial Data Fetch
     axios
       .get(`${API_URL}/incidents/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -159,24 +158,18 @@ export default function IncidentWarRoom() {
         setIncident(res.data);
         setLoading(false);
       })
-      .catch(() => {
-        toast.error("Could not load incident details");
-        router.push("/dashboard");
-      });
+      .catch(() => router.push("/dashboard"));
 
-    // Socket Connection
     socketRef.current = io(API_URL, {
       auth: { token },
-      transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
+      transports: ["websocket"],
     });
-
     const socket = socketRef.current;
 
     socket.emit("joinRoom", `incident:${id}`);
 
     // --- LISTENERS ---
+
     socket.on("newComment", (event) => {
       setIncident((prev: any) => {
         if (!prev) return prev;
@@ -214,8 +207,17 @@ export default function IncidentWarRoom() {
     socket.on("incident:updated", (updatedData: any) => {
       setIncident((prev: any) => {
         if (!prev) return prev;
-        return { ...prev, ...updatedData };
+        return {
+          ...prev,
+          ...updatedData,
+          events: prev.events,
+          attachments: prev.attachments,
+        };
       });
+
+      if (updatedData.assignee) {
+        toast.info(`Incident assigned to ${updatedData.assignee.name}`);
+      }
     });
 
     socket.on("incident:new_attachment", (attachment) => {
@@ -223,9 +225,17 @@ export default function IncidentWarRoom() {
         if (!prev) return prev;
         if (prev.attachments.find((a: any) => a.id === attachment.id))
           return prev;
+
+        const patchedAttachment = {
+          ...attachment,
+          uploadedBy: attachment.uploadedBy || {
+            name: "New Upload",
+            id: "temp",
+          },
+        };
         return {
           ...prev,
-          attachments: [...prev.attachments, attachment],
+          attachments: [...prev.attachments, patchedAttachment],
         };
       });
     });
@@ -241,10 +251,6 @@ export default function IncidentWarRoom() {
     });
 
     return () => {
-      socket.off("newComment");
-      socket.off("incident:updated");
-      socket.off("incident:new_attachment");
-      socket.off("incident:attachment_removed");
       socket.disconnect();
     };
   }, [id, API_URL, router]);
@@ -257,18 +263,14 @@ export default function IncidentWarRoom() {
     const token = localStorage.getItem("token");
     const msg = newMessage;
     setNewMessage("");
-    try {
-      await axios.post(
-        `${API_URL}/incidents/${id}/comments`,
-        { message: msg },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-    } catch {
-      setNewMessage(msg);
-      toast.error("Failed to send message");
-    }
+    await axios.post(
+      `${API_URL}/incidents/${id}/comments`,
+      { message: msg },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
   };
 
+  // 🔥 FIX: Split logic into uploadFiles (core) and handleInputFileChange (event)
   const uploadFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     setIsUploading(true);
@@ -283,7 +285,7 @@ export default function IncidentWarRoom() {
           "Content-Type": "multipart/form-data",
         },
       });
-      toast.success("File uploaded");
+      toast.success("File sent");
     } catch {
       toast.error("Upload failed");
     } finally {
@@ -293,12 +295,18 @@ export default function IncidentWarRoom() {
     }
   };
 
+  // 🔥 FIX: Correct Event Type for Input Change
   const handleInputFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     uploadFiles(e.target.files);
   };
 
   const handleDeleteIncident = async () => {
-    if (!confirm("Delete incident permanently?")) return;
+    if (
+      !confirm(
+        "Are you sure? This will delete the incident and all attachments permanently."
+      )
+    )
+      return;
     try {
       await axios.delete(`${API_URL}/incidents/${id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -306,14 +314,13 @@ export default function IncidentWarRoom() {
       toast.success("Incident deleted");
       router.push("/dashboard");
     } catch {
-      toast.error("Permission denied");
+      toast.error("Delete failed. Permission denied.");
     }
   };
 
   const handleDeleteMessage = async (eventId: string) => {
     if (!confirm("Delete message?")) return;
 
-    const previousEvents = [...incident.events];
     setIncident((prev: any) => ({
       ...prev,
       events: prev.events.filter((e: any) => e.id !== eventId),
@@ -323,9 +330,9 @@ export default function IncidentWarRoom() {
       await axios.delete(`${API_URL}/incidents/${id}/events/${eventId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
+      toast.success("Message deleted");
     } catch {
-      setIncident((prev: any) => ({ ...prev, events: previousEvents }));
-      toast.error("Failed to delete message");
+      toast.error("Failed to delete");
     }
   };
 
@@ -336,7 +343,6 @@ export default function IncidentWarRoom() {
 
   const saveEdit = async () => {
     if (!editingEventId) return;
-    const oldEvents = [...incident.events];
 
     setIncident((prev: any) => ({
       ...prev,
@@ -356,16 +362,15 @@ export default function IncidentWarRoom() {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         }
       );
+      toast.success("Message updated");
     } catch {
-      setIncident((prev: any) => ({ ...prev, events: oldEvents }));
-      toast.error("Update failed");
+      toast.error("Failed to update");
     }
   };
 
   const handleDeleteAttachment = async (attachmentId: string) => {
-    if (!confirm("Delete this attachment from S3?")) return;
+    if (!confirm("Delete this attachment permanently?")) return;
 
-    const previousAttachments = [...incident.attachments];
     setIncident((prev: any) => ({
       ...prev,
       attachments: prev.attachments.filter((a: any) => a.id !== attachmentId),
@@ -378,33 +383,28 @@ export default function IncidentWarRoom() {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         }
       );
-      toast.success("Attachment removed");
-    } catch (err: any) {
-      setIncident((prev: any) => ({
-        ...prev,
-        attachments: previousAttachments,
-      }));
-      toast.error(err.response?.data?.message || "S3 Deletion Failed");
+      toast.success("Attachment deleted");
+    } catch {
+      toast.error("Failed to delete attachment");
     }
   };
 
-  // 🔥 FIX: Removed unused 'filename' parameter
-  const handleDownload = (url: string) => {
-    window.open(url, "_blank");
+  const handleDownload = (url: string, filename: string) => {
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", filename);
+    link.target = "_blank";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   const updateStatus = async (status: Status) => {
-    try {
-      await axios.patch(
-        `${API_URL}/incidents/${id}`,
-        { status },
-        {
-          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        }
-      );
-    } catch {
-      toast.error("Status update failed");
-    }
+    await axios.patch(
+      `${API_URL}/incidents/${id}`,
+      { status },
+      { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }
+    );
   };
 
   const handleAssignToMe = async () => {
@@ -416,7 +416,13 @@ export default function IncidentWarRoom() {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         }
       );
-      setIncident((prev: any) => ({ ...prev, assignee: currentUser }));
+      // Optimistic update
+      setIncident((prev: any) => ({
+        ...prev,
+        assignee: currentUser,
+        assigneeId: currentUser.id,
+      }));
+      toast.success("Assigned to you");
     } catch {
       toast.error("Assignment failed");
     }
@@ -432,9 +438,12 @@ export default function IncidentWarRoom() {
       </div>
     );
 
+  // 🔒 Logic Constants
   const isResolved = incident.status === Status.RESOLVED;
   const canDeleteIncident =
-    currentUser?.role === "ADMIN" || currentUser?.id === incident.reporterId;
+    currentUser?.role === "ADMIN" ||
+    currentUser?.id === incident.reporter?.id ||
+    currentUser?.id === incident.reporterId;
 
   return (
     <div
@@ -446,18 +455,21 @@ export default function IncidentWarRoom() {
       onDragLeave={() => setIsDragging(false)}
       onDrop={(e) => {
         e.preventDefault();
-        if (!isResolved && e.dataTransfer.files)
+        if (!isResolved && e.dataTransfer.files) {
           uploadFiles(e.dataTransfer.files);
+        }
       }}
     >
       {isDragging && !isResolved && (
-        <div className="absolute inset-0 z-50 bg-blue-600/20 backdrop-blur-sm border-4 border-blue-500 border-dashed m-4 rounded-xl flex items-center justify-center pointer-events-none text-white font-bold text-xl">
-          <UploadCloud className="mr-2 h-8 w-8 animate-bounce" /> Drop files to
-          upload
+        <div className="absolute inset-0 z-50 bg-blue-600/20 backdrop-blur-sm border-4 border-blue-500 border-dashed m-4 rounded-xl flex items-center justify-center pointer-events-none">
+          <div className="text-blue-200 text-2xl font-bold flex flex-col items-center gap-4 animate-bounce">
+            <UploadCloud className="h-16 w-16" /> Drop to Upload Evidence
+          </div>
         </div>
       )}
 
-      <header className="h-16 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-950 z-20">
+      {/* HEADER */}
+      <header className="h-16 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-950 z-20 relative">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push("/dashboard")}
@@ -475,7 +487,9 @@ export default function IncidentWarRoom() {
                 className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${
                   incident.severity === "CRITICAL"
                     ? "bg-red-500/20 text-red-500"
-                    : "bg-blue-500/20 text-blue-500"
+                    : incident.severity === "HIGH"
+                      ? "bg-orange-500/20 text-orange-500"
+                      : "bg-blue-500/20 text-blue-500"
                 }`}
               >
                 {incident.severity}
@@ -483,6 +497,7 @@ export default function IncidentWarRoom() {
             </div>
             <div className="flex items-center gap-3 text-xs text-zinc-500 mt-0.5">
               <Briefcase className="h-3 w-3" /> {incident.team?.name}
+              <span className="text-zinc-700">|</span>
               <SLACountdown
                 deadline={incident.slaDeadline}
                 status={incident.status}
@@ -499,14 +514,17 @@ export default function IncidentWarRoom() {
               Assign to Me
             </button>
           )}
+
           {canDeleteIncident && (
             <button
               onClick={handleDeleteIncident}
-              className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-md border border-red-500/20"
+              className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-md transition border border-red-500/20"
+              title="Delete Incident"
             >
               <Trash2 className="h-4 w-4" />
             </button>
           )}
+
           {isResolved ? (
             <div className="px-3 py-1.5 bg-emerald-950 border border-emerald-900 text-emerald-500 rounded-md text-sm font-bold flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4" /> Resolved
@@ -522,11 +540,12 @@ export default function IncidentWarRoom() {
         </div>
       </header>
 
+      {/* MAIN LAYOUT */}
       <div className="flex-1 flex overflow-hidden">
-        <main className="flex-1 flex flex-col relative bg-black bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px]">
-          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <main className="flex-1 flex flex-col relative bg-black bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px]">
+          <div className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
             <div className="flex justify-center">
-              <div className="bg-zinc-950/80 border border-zinc-800 p-3 rounded-lg max-w-2xl text-center shadow-lg">
+              <div className="bg-zinc-950/80 border border-zinc-800 backdrop-blur-sm rounded-lg p-3 max-w-2xl text-center shadow-lg">
                 <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">
                   Initial Report
                 </p>
@@ -536,6 +555,7 @@ export default function IncidentWarRoom() {
 
             {timeline.map((item: any) => {
               const isMe = currentUser?.id === item.user?.id;
+
               const isSystem =
                 item.kind === "EVENT" &&
                 item.type !== "COMMENT" &&
@@ -544,12 +564,15 @@ export default function IncidentWarRoom() {
               if (isSystem) {
                 return (
                   <div key={item.id} className="flex justify-center my-4">
-                    <div className="bg-zinc-900/80 border border-zinc-800/50 px-3 py-1 rounded-full text-xs text-zinc-500 flex items-center gap-2">
+                    <div className="bg-zinc-900/80 backdrop-blur border border-zinc-800/50 px-3 py-1 rounded-full text-xs text-zinc-500 flex items-center gap-2">
                       <Shield className="h-3 w-3" />
                       <span className="text-zinc-300 font-bold">
                         {item.user?.name}
                       </span>
                       <span>{item.message}</span>
+                      <span className="opacity-50">
+                        {format(new Date(item.createdAt), "h:mm a")}
+                      </span>
                     </div>
                   </div>
                 );
@@ -561,7 +584,11 @@ export default function IncidentWarRoom() {
                   className={`flex gap-3 group/msg ${isMe ? "flex-row-reverse" : "flex-row"}`}
                 >
                   <div
-                    className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${isMe ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-400"}`}
+                    className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 shadow-lg ${
+                      isMe
+                        ? "bg-blue-600 text-white"
+                        : "bg-zinc-800 text-zinc-400"
+                    }`}
                   >
                     {item.user?.name?.charAt(0).toUpperCase()}
                   </div>
@@ -576,39 +603,60 @@ export default function IncidentWarRoom() {
                       <span className="text-[10px] text-zinc-600">
                         {format(new Date(item.createdAt), "h:mm a")}
                       </span>
+                      {item.type === "EDITED" && (
+                        <span className="text-[10px] text-zinc-500 italic">
+                          (edited)
+                        </span>
+                      )}
                     </div>
 
                     {item.kind === "ATTACHMENT" ? (
                       <div className="relative group overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 transition-all hover:border-zinc-700 shadow-md">
                         {isImage(item.filename) ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={item.url}
-                            alt="attachment"
-                            className="max-h-72 object-cover w-full cursor-pointer"
-                            onClick={() => handleDownload(item.url)}
-                          />
+                          <div
+                            className="cursor-pointer relative"
+                            onClick={() =>
+                              handleDownload(item.url, item.filename)
+                            }
+                          >
+                            {/* 🔥 FIX: Suppress Next.js Image Warning */}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={item.url}
+                              alt="attachment"
+                              className="max-h-72 object-cover w-full"
+                            />
+                          </div>
                         ) : (
                           <div
                             className="flex items-center gap-3 p-4 cursor-pointer"
-                            onClick={() => handleDownload(item.url)}
+                            onClick={() =>
+                              handleDownload(item.url, item.filename)
+                            }
                           >
-                            <FileText className="h-6 w-6 text-zinc-400" />
+                            <div className="bg-zinc-800 p-2 rounded">
+                              <FileText className="h-6 w-6 text-zinc-400" />
+                            </div>
                             <div>
                               <p className="text-sm font-medium text-zinc-200">
                                 {item.filename}
                               </p>
-                              <p className="text-xs text-zinc-500">Download</p>
+                              <p className="text-xs text-zinc-500">
+                                Click to download
+                              </p>
                             </div>
                           </div>
                         )}
                         <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
-                            onClick={() => handleDownload(item.url)}
+                            onClick={() =>
+                              handleDownload(item.url, item.filename)
+                            }
                             className="bg-black/60 p-1.5 rounded text-white hover:bg-black/80"
                           >
                             <Download className="h-4 w-4" />
                           </button>
+                          {/* 🔥 Lock Actions if Resolved */}
                           {!isResolved &&
                             (isMe || currentUser?.role === "ADMIN") && (
                               <button
@@ -635,26 +683,36 @@ export default function IncidentWarRoom() {
                               className="bg-zinc-950 p-2 rounded text-sm text-zinc-200 outline-none border border-zinc-800 focus:border-blue-600 w-full"
                             />
                             <div className="flex justify-end gap-2">
-                              <X
-                                className="h-4 w-4 cursor-pointer"
+                              <button
                                 onClick={() => setEditingEventId(null)}
-                              />
-                              <Check
-                                className="h-4 w-4 cursor-pointer text-emerald-500"
+                                className="p-1 text-zinc-400 hover:text-white"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                              <button
                                 onClick={saveEdit}
-                              />
+                                className="p-1 text-emerald-500 hover:text-emerald-400"
+                              >
+                                <Check className="h-4 w-4" />
+                              </button>
                             </div>
                           </div>
                         ) : (
                           <div
-                            className={`px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${isMe ? "bg-blue-600 text-white rounded-tr-none" : "bg-zinc-800 text-zinc-200 rounded-tl-none"}`}
+                            className={`px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                              isMe
+                                ? "bg-blue-600 text-white rounded-tr-none"
+                                : "bg-zinc-800 text-zinc-200 rounded-tl-none"
+                            }`}
                           >
                             <ReactMarkdown>{item.message}</ReactMarkdown>
                           </div>
                         )}
+
+                        {/* 🔥 Lock Actions if Resolved */}
                         {!editingEventId && isMe && !isResolved && (
                           <div
-                            className={`absolute top-0 opacity-0 group-hover/msg:opacity-100 flex items-center gap-1 transition-opacity ${isMe ? "-left-16" : "-right-16"}`}
+                            className={`absolute top-0 -right-16 opacity-0 group-hover/msg:opacity-100 flex items-center gap-1 transition-opacity ${isMe ? "right-auto -left-16" : "-right-16"}`}
                           >
                             <button
                               onClick={() => startEditing(item)}
@@ -679,22 +737,26 @@ export default function IncidentWarRoom() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="p-4 bg-black border-t border-zinc-800 z-20">
-            {isResolved ? (
+          {/* 🔥 CONDITIONAL INPUT AREA */}
+          {isResolved ? (
+            <div className="p-4 bg-black border-t border-zinc-800 z-20">
               <div className="max-w-4xl mx-auto bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl flex items-center justify-center gap-3 text-zinc-400">
-                <Lock className="h-4 w-4" />
+                <Lock className="h-4 w-4 text-zinc-500" />
                 <span className="text-sm font-medium">
-                  Incident Resolved. Read-only.
+                  This incident is resolved. Chat is read-only.
                 </span>
                 <button
                   onClick={() => updateStatus(Status.OPEN)}
-                  className="flex items-center gap-1 text-blue-500 hover:text-blue-400 text-sm font-medium ml-2"
+                  className="flex items-center gap-1 text-blue-500 hover:text-blue-400 hover:underline text-sm font-medium ml-2"
                 >
                   <RotateCcw className="h-3 w-3" /> Reopen
                 </button>
               </div>
-            ) : (
+            </div>
+          ) : (
+            <div className="p-4 bg-black border-t border-zinc-800 z-20">
               <div className="max-w-4xl mx-auto flex items-end gap-3 bg-zinc-900 p-2 rounded-xl border border-zinc-800 focus-within:border-blue-500/50 transition-colors shadow-2xl">
+                {/* 🔥 FIX: Connected handleInputFileChange */}
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -704,7 +766,7 @@ export default function IncidentWarRoom() {
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploading}
-                  className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg"
+                  className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
                 >
                   {isUploading ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
@@ -727,13 +789,13 @@ export default function IncidentWarRoom() {
                 <button
                   onClick={handleSendMessage}
                   disabled={!newMessage.trim()}
-                  className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                  className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
                 >
                   <Send className="h-4 w-4" />
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </main>
 
         <aside className="w-72 border-l border-zinc-800 bg-zinc-950 p-6 hidden lg:block z-20">
@@ -741,6 +803,12 @@ export default function IncidentWarRoom() {
             Incident Details
           </h3>
           <div className="space-y-4 text-sm">
+            <div className="flex justify-between">
+              <span className="text-zinc-500">ID</span>
+              <span className="font-mono text-zinc-300">
+                #{incident.id.slice(0, 6)}
+              </span>
+            </div>
             <div className="flex justify-between">
               <span className="text-zinc-500">Status</span>
               <span

@@ -11,9 +11,9 @@ import {
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { Logger, Injectable } from '@nestjs/common';
+import { Logger, Injectable } from '@nestjs/common'; // 1. Import Injectable
 
-// --- Interfaces ---
+// 1. Define Payload
 interface UserPayload {
   sub: string;
   email: string;
@@ -21,21 +21,24 @@ interface UserPayload {
   teamId: string | null;
 }
 
+// 2. Define Authenticated Socket
 export interface SocketWithAuth extends Socket {
   user: UserPayload;
 }
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: '*', // Allow connections from any origin (Mobile, Web, Postman)
     methods: ['GET', 'POST'],
     credentials: true,
   },
+  // 🔥 AWS & Performance Optimization:
+  // Allow 'polling' for fast initial connect, then upgrade to 'websocket'
   transports: ['websocket', 'polling'],
-  pingTimeout: 60000,
-  pingInterval: 25000,
+  pingTimeout: 60000, // 60s timeout to prevent AWS LB from closing connection
+  pingInterval: 25000, // Send heartbeat every 25s
 })
-@Injectable()
+@Injectable() // 2. Add Injectable decorator so Service can use it
 export class EventsGateway
   implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
 {
@@ -56,6 +59,7 @@ export class EventsGateway
   // --- AUTHENTICATION HANDLER ---
   async handleConnection(client: Socket) {
     try {
+      // 1. Extract Token from Auth Object (Client) or Headers (Postman)
       const auth = client.handshake.auth as { token?: string };
       const headers = client.handshake.headers as { authorization?: string };
 
@@ -66,27 +70,43 @@ export class EventsGateway
       }
 
       if (!token) {
-        this.logger.warn(`⚠️ Connection rejected: No token for ${client.id}`);
+        this.logger.warn(
+          `⚠️ Client ${client.id} tried to connect without token.`,
+        );
         client.disconnect();
         return;
       }
 
+      // 2. Verify Token
       const payload = this.jwtService.verify<UserPayload>(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
 
+      // 3. Attach user to socket
       (client as SocketWithAuth).user = payload;
-      this.logger.log(`✅ User Connected: ${payload.email}`);
 
-      // Auto-join global room for new incident alerts
+      this.logger.log(`✅ User Connected: ${payload.email} (ID: ${client.id})`);
+
+      // 4. 🔥 CRITICAL FIX: Join 'general' Room
+      // This ensures the user receives global 'incident:created' events immediately
       await client.join('general');
 
-      // Auto-join team-specific room
+      // 5. Auto-Join Team Room
       if (payload.teamId) {
-        await client.join(`team:${payload.teamId}`);
+        const teamRoom = `team:${payload.teamId}`;
+        await client.join(teamRoom);
+        this.logger.log(
+          `📢 User ${payload.email} joined Team Room: ${teamRoom}`,
+        );
+      } else {
+        this.logger.warn(`⚠️ User ${payload.email} has no Team ID!`);
       }
-    } catch {
-      this.logger.error(`❌ Socket Auth Failed: ${client.id}`);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Unknown authentication error';
+      this.logger.error(
+        `❌ Connection rejected for ${client.id}: ${errorMessage}`,
+      );
       client.disconnect();
     }
   }
@@ -95,54 +115,38 @@ export class EventsGateway
     this.logger.log(`🔌 Client disconnected: ${client.id}`);
   }
 
+  // =========================================================
+  // 🚀 BROADCAST METHODS (Called by Services)
+  // =========================================================
+
+  /**
+   * Called by IncidentsService after a new incident is saved to DB.
+   * This pushes the data to everyone in 'general' room instantly.
+   */
   broadcastIncident(incident: any) {
     this.server.to('general').emit('incident:created', incident);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    this.logger.log(`📡 Broadcast: New Incident ${incident.id}`);
+    this.logger.log(`📡 Broadcasted incident ${incident.id} to 'general'`);
   }
 
-  /**
-   * Send new comments, edits, or status change events to the specific War Room
-   */
-  broadcastToWarRoom(incidentId: string, event: any) {
-    this.server.to(`incident:${incidentId}`).emit('newComment', event);
-    this.logger.log(`💬 Broadcast: Event in room incident:${incidentId}`);
-  }
+  // =========================================================
+  // 🎯 Room Management
+  // =========================================================
 
-  /**
-   * Sync full incident object updates (e.g., assignee change, severity change)
-   */
-  broadcastIncidentUpdate(incidentId: string, data: any) {
-    this.server.to(`incident:${incidentId}`).emit('incident:updated', data);
-  }
-
-  /**
-   * Notify War Room when a new file is uploaded to S3
-   */
-  broadcastAttachment(incidentId: string, attachment: any) {
-    this.server
-      .to(`incident:${incidentId}`)
-      .emit('incident:new_attachment', attachment);
-  }
-
-  /**
-   * Notify War Room when a file is deleted from S3
-   */
-  broadcastAttachmentRemoval(incidentId: string, attachmentId: string) {
-    this.server
-      .to(`incident:${incidentId}`)
-      .emit('incident:attachment_removed', { id: attachmentId });
-  }
-
+  // Frontend calls this to listen to a specific incident
   @SubscribeMessage('joinRoom')
   handleJoinRoom(
-    @MessageBody() room: string,
+    @MessageBody() room: string, // Expects "incident:123"
     @ConnectedSocket() client: SocketWithAuth,
   ) {
-    const safeRoom = String(room).replace(/"/g, '');
+    const safeRoom = String(room).replace(/"/g, ''); // Cleanup quotes
+
     void client.join(safeRoom);
-    this.logger.log(`👀 User ${client.user?.email} joined: ${safeRoom}`);
-    return { status: 'success', room: safeRoom };
+
+    this.logger.log(
+      `👀 User ${client.user?.email ?? 'Unknown'} joined specific room: ${safeRoom}`,
+    );
+    return { event: 'joined', room: safeRoom };
   }
 
   @SubscribeMessage('leaveRoom')
@@ -152,6 +156,19 @@ export class EventsGateway
   ) {
     const safeRoom = String(room).replace(/"/g, '');
     void client.leave(safeRoom);
-    return { status: 'success', room: safeRoom };
+    this.logger.log(`👋 Client left room: ${safeRoom}`);
+    return { event: 'left', room: safeRoom };
+  }
+
+  // Legacy support (optional)
+  @SubscribeMessage('joinIncident')
+  handleJoinIncident(
+    @MessageBody() data: any,
+    @ConnectedSocket() client: SocketWithAuth,
+  ) {
+    const incidentId = String(data).replace(/"/g, '');
+    const roomName = `incident:${incidentId}`;
+    void client.join(roomName);
+    return { event: 'joined', room: roomName };
   }
 }
