@@ -94,6 +94,9 @@ export class IncidentsService {
 
     await this.escalationService.scheduleEscalation(incident.id);
 
+    // 🔥 FIX: Broadcast to "general" room so all Dashboards update instantly
+    this.eventsGateway.broadcastIncident(incident);
+
     if (incident.teamId) {
       this.eventsService.sendTeamAlert(incident.teamId, incident as any);
     }
@@ -312,7 +315,7 @@ export class IncidentsService {
     incidentId: string,
     attachmentId: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _userId: string, // Fixed unused variable error
+    _userId: string,
   ) {
     const attachment = await this.prisma.attachment.findUnique({
       where: { id: attachmentId },

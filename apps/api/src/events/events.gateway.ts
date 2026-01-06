@@ -11,7 +11,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { Logger } from '@nestjs/common';
+import { Logger, Injectable } from '@nestjs/common'; // 1. Import Injectable
 
 // 1. Define Payload
 interface UserPayload {
@@ -38,6 +38,7 @@ export interface SocketWithAuth extends Socket {
   pingTimeout: 60000, // 60s timeout to prevent AWS LB from closing connection
   pingInterval: 25000, // Send heartbeat every 25s
 })
+@Injectable() // 2. Add Injectable decorator so Service can use it
 export class EventsGateway
   implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
 {
@@ -86,8 +87,11 @@ export class EventsGateway
 
       this.logger.log(`✅ User Connected: ${payload.email} (ID: ${client.id})`);
 
-      // 4. 🔥 CRITICAL: Auto-Join Team Room
-      // This ensures User B receives updates for their team immediately
+      // 4. 🔥 CRITICAL FIX: Join 'general' Room
+      // This ensures the user receives global 'incident:created' events immediately
+      await client.join('general');
+
+      // 5. Auto-Join Team Room
       if (payload.teamId) {
         const teamRoom = `team:${payload.teamId}`;
         await client.join(teamRoom);
@@ -109,6 +113,20 @@ export class EventsGateway
 
   handleDisconnect(client: Socket) {
     this.logger.log(`🔌 Client disconnected: ${client.id}`);
+  }
+
+  // =========================================================
+  // 🚀 BROADCAST METHODS (Called by Services)
+  // =========================================================
+
+  /**
+   * Called by IncidentsService after a new incident is saved to DB.
+   * This pushes the data to everyone in 'general' room instantly.
+   */
+  broadcastIncident(incident: any) {
+    this.server.to('general').emit('incident:created', incident);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    this.logger.log(`📡 Broadcasted incident ${incident.id} to 'general'`);
   }
 
   // =========================================================

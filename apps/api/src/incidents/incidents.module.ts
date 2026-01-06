@@ -1,11 +1,10 @@
-// src/incidents/incidents.module.ts
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { IncidentsService } from './incidents.service';
 import { IncidentsController } from './incidents.controller';
-import { IncidentsProcessor } from './incidents.processor'; // <--- IMPORT THIS
+import { IncidentsProcessor } from './incidents.processor';
 import { PrismaModule } from '../prisma/prisma.module';
-import { EventsModule } from '../events/events.module';
+import { EventsModule } from '../events/events.module'; // ✅ Essential for WebSocket
 import { FilesModule } from '../files/files.module';
 import { EscalationModule } from '../escalation/escalation.module';
 
@@ -15,15 +14,12 @@ import { EscalationModule } from '../escalation/escalation.module';
       name: 'incidents',
     }),
     PrismaModule,
-    EventsModule,
+    EventsModule, // ✅ Ensures EventsGateway is available
     FilesModule,
     EscalationModule,
   ],
   controllers: [IncidentsController],
-  providers: [
-    IncidentsService,
-    IncidentsProcessor, // <--- REGISTER THIS
-  ],
+  providers: [IncidentsService, IncidentsProcessor],
   exports: [BullModule],
 })
 export class IncidentsModule {}
