@@ -60,14 +60,23 @@ export class FilesController {
   @UseGuards(AuthGuard('jwt'))
   @Get('download/:key')
   async downloadFile(@Param('key') key: string) {
+    // Decode key in case it contains special characters
     const decodedKey = decodeURIComponent(key);
     return this.filesService.getDownloadUrl(decodedKey);
   }
+
+  // 🔥 UPDATED: Now accepts ID instead of Key
+  // This matches the updated FilesService logic.
   @UseGuards(AuthGuard('jwt'))
-  @Delete(':key')
-  async deleteFile(@Param('key') key: string) {
-    const decodedKey = decodeURIComponent(key);
-    this.logger.log(`Request to delete file: ${decodedKey}`);
-    return this.filesService.deleteFile(decodedKey);
+  @Delete(':id')
+  async deleteFile(@Param('id') id: string) {
+    this.logger.log(`Request to delete file ID: ${id}`);
+
+    const deleted = await this.filesService.deleteFile(id);
+
+    if (!deleted) {
+      return { message: 'File already deleted or not found' };
+    }
+    return deleted;
   }
 }

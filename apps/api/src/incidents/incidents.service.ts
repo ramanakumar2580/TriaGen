@@ -94,7 +94,6 @@ export class IncidentsService {
 
     await this.escalationService.scheduleEscalation(incident.id);
 
-    // 🔥 FIX: Broadcast to "general" room so all Dashboards update instantly
     this.eventsGateway.broadcastIncident(incident);
 
     if (incident.teamId) {
@@ -234,8 +233,10 @@ export class IncidentsService {
     const attachments = await this.prisma.attachment.findMany({
       where: { incidentId: id },
     });
+
+    // ✅ FIX: Pass 'file.id' instead of 'file.fileKey'
     await Promise.all(
-      attachments.map((file) => this.filesService.deleteFile(file.fileKey)),
+      attachments.map((file) => this.filesService.deleteFile(file.id)),
     );
 
     return this.prisma.incident.delete({ where: { id } });
@@ -311,24 +312,22 @@ export class IncidentsService {
     return { success: true };
   }
 
+  // ✅ UPDATED: Clean, Safe, No 500 Error
   async removeAttachment(
     incidentId: string,
     attachmentId: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _userId: string,
   ) {
-    const attachment = await this.prisma.attachment.findUnique({
-      where: { id: attachmentId },
-    });
+    // We let FilesService handle everything (including "Already deleted" check)
+    const deletedRecord = await this.filesService.deleteFile(attachmentId);
 
-    if (!attachment) throw new NotFoundException('Attachment not found');
+    // If it was already gone (null), return success immediately
+    if (!deletedRecord) {
+      return { success: true, message: 'Already deleted' };
+    }
 
-    await this.filesService.deleteFile(attachment.fileKey);
-
-    await this.prisma.attachment.delete({
-      where: { id: attachmentId },
-    });
-
+    // Only emit if we actually deleted something
     this.eventsGateway.server
       .to(`incident:${incidentId}`)
       .emit('incident:attachment_removed', { id: attachmentId });

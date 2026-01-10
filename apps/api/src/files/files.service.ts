@@ -18,7 +18,7 @@ export class FilesService {
 
   constructor(private prisma: PrismaService) {
     this.s3Client = new S3Client({
-      region: 'ap-south-2', // ✅ Hardcoded Region for S3 Client
+      region: 'ap-south-2',
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
@@ -33,7 +33,7 @@ export class FilesService {
     const command = new PutObjectCommand({
       Bucket: process.env.AWS_BUCKET_NAME,
       Key: key,
-      Body: file.buffer, // Buffer from Multer
+      Body: file.buffer,
       ContentType: file.mimetype,
     });
 
@@ -57,7 +57,7 @@ export class FilesService {
     });
   }
 
-  // 1. Upload URL (PUT) - Optional if using Presigned Uploads directly
+  // 1. Upload URL (PUT)
   async getPresignedUrl(
     incidentId: string,
     filename: string,
@@ -76,7 +76,7 @@ export class FilesService {
     return { uploadUrl: url, key: key };
   }
 
-  // 2. Download URL (GET with attachment header)
+  // 2. Download URL (GET)
   async getDownloadUrl(key: string) {
     const command = new GetObjectCommand({
       Bucket: process.env.AWS_BUCKET_NAME,
@@ -99,8 +99,6 @@ export class FilesService {
     userId: string;
     sizeBytes?: number;
   }) {
-    // 🔥 FIX: Hardcoded 'ap-south-2' here to ensure the public URL is generated correctly
-    // Previously used process.env.AWS_REGION which might have been missing or wrong
     const publicUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.ap-south-2.amazonaws.com/${data.fileKey}`;
 
     return this.prisma.attachment.create({
@@ -113,16 +111,30 @@ export class FilesService {
         sizeBytes: data.sizeBytes || 0,
         uploadedById: data.userId,
       },
-      // 🔥 FIX: Include User info so the avatar shows up instantly in chat
       include: {
         uploadedBy: { select: { id: true, name: true } },
       },
     });
   }
 
-  // 4. Delete File (S3 + DB)
-  async deleteFile(key: string) {
-    // A. Delete from S3
+  // 4. Delete File (Safely Handles "Already Deleted")
+  async deleteFile(attachmentId: string) {
+    // A. Find the attachment first
+    const attachment = await this.prisma.attachment.findUnique({
+      where: { id: attachmentId },
+    });
+
+    // If already deleted, return null gracefully (Prevention of 500 Error)
+    if (!attachment) {
+      this.logger.warn(
+        `⚠️ File with ID ${attachmentId} not found (already deleted?)`,
+      );
+      return null;
+    }
+
+    const key = attachment.fileKey;
+
+    // B. Delete from S3
     const command = new DeleteObjectCommand({
       Bucket: process.env.AWS_BUCKET_NAME,
       Key: key,
@@ -132,12 +144,14 @@ export class FilesService {
       await this.s3Client.send(command);
       this.logger.log(`🗑️ Deleted S3 file: ${key}`);
     } catch (error) {
+      // Log but don't crash, ensuring DB cleanup still happens
       this.logger.error(`❌ Failed to delete S3 file: ${key}`, error);
     }
 
-    // B. Delete from Attachment Table
-    await this.prisma.attachment.deleteMany({
-      where: { fileKey: key },
+    // C. Delete from DB and Return the Object
+    // We do this inside the service now so we don't need to do it in the controller
+    return this.prisma.attachment.delete({
+      where: { id: attachmentId },
     });
   }
 }

@@ -101,7 +101,9 @@ export class IncidentsController {
     return attachment;
   }
 
-  // 🔥 NEW: Delete Attachment Endpoint
+  // 🔥 FIXED: Robust Attachment Deletion
+  // This now delegates to IncidentsService.removeAttachment,
+  // which safely calls FilesService.deleteFile (no 500 crashes).
   @Delete(':id/attachments/:attachmentId')
   removeAttachment(
     @Param('id') id: string,
