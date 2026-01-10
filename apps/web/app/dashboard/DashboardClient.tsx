@@ -75,7 +75,6 @@ export default function Dashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Read active tab from URL (Persistent after refresh)
   const activeTab = searchParams.get("tab") || "ALL";
 
   // Data State
@@ -99,10 +98,14 @@ export default function Dashboard() {
   });
   const [submitting, setSubmitting] = useState(false);
 
+  // 👇 Keep this for Axios (REST API)
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+  // 👇 FIX: Use this for Socket (Your new Secure Domain)
+  const SOCKET_URL = "https://triagen.40.192.34.253.sslip.io";
+
   const socketRef = useRef<Socket | null>(null);
 
-  // Helper to change tabs via URL
   const handleTabChange = (tab: string) => {
     router.push(`/dashboard?tab=${tab}`);
   };
@@ -130,7 +133,7 @@ export default function Dashboard() {
     setUser(JSON.parse(storedUser));
   }, [router]);
 
-  // 2. FETCH DATA (Runs when Tab changes)
+  // 2. FETCH DATA
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -154,20 +157,19 @@ export default function Dashboard() {
     fetchIncidents();
   }, [API_URL, activeTab]);
 
-  // 3. SOCKET CONNECTION (Runs ONCE - Does not disconnect on Tab switch)
+  // 3. SOCKET CONNECTION
   useEffect(() => {
     const token = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
 
     if (!token || !storedUser || socketRef.current) return;
 
-    const currentUser = JSON.parse(storedUser);
-
-    // 🔥 FIX: Enable Polling + Websocket to match Backend
-    socketRef.current = io(API_URL, {
+    // 👇 FIX: Use SOCKET_URL (Base Domain) instead of API_URL
+    socketRef.current = io(SOCKET_URL, {
       auth: { token },
       transports: ["websocket", "polling"],
       withCredentials: true,
+      path: "/socket.io/", // Explicitly set path
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
     });
@@ -183,12 +185,11 @@ export default function Dashboard() {
     );
 
     // --- EVENT HANDLERS ---
-
-    // A. Incident Created
     socket.on("incident:created", (payload: any) => {
       console.log("🔔 Socket Event Received:", payload);
 
-      // If I created it, ignore (Axios handled it already)
+      // Note: We use JSON.parse here to get the LATEST user state inside the event
+      const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
       if (payload.reporterId === currentUser.id) return;
 
       toast.message("🚨 New Incident Alert", {
@@ -197,44 +198,26 @@ export default function Dashboard() {
         duration: 5000,
       });
 
-      // Add to list safely
       setIncidents((prev) => {
         if (prev.find((i) => i.id === payload.id)) return prev;
         return [payload, ...prev];
       });
     });
 
-    // B. Incident Assigned
     socket.on("incident:assigned", (payload: any) => {
       setIncidents((prev) =>
         prev.map((inc) => (inc.id === payload.id ? payload : inc))
       );
-
-      const isAssignedToMe = payload.assignee?.id === currentUser.id;
-
-      if (isAssignedToMe) {
-        toast.message("👮 You have been assigned!", {
-          description: `You are now handling "${payload.title}"`,
-          icon: <Briefcase className="h-5 w-5 text-blue-500" />,
-          duration: 5000,
-        });
-      } else {
-        toast.message("Incident Assigned", {
-          description: `${payload.assignee?.name || "Responder"} is handling "${payload.title}"`,
-          icon: <Briefcase className="h-5 w-5 text-zinc-400" />,
-          duration: 3000,
-        });
-      }
     });
 
-    // Cleanup only on unmount (Logout/Close Tab)
+    // Cleanup
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, [API_URL]); // Empty dependency array ensures it persists across tab switches
+  }, []); // Run once on mount
 
   // 🔍 Client-side filtering
   const filteredIncidents = useMemo(() => {
@@ -278,7 +261,6 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      // Optimistically add to list (only if it matches current logic)
       setIncidents((prev) => {
         const exists = prev.find((i) => i.id === res.data.id);
         if (exists) return prev;
