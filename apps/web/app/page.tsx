@@ -1,10 +1,23 @@
 "use client";
 
+import { useEffect } from "react"; // 👈 Added useEffect
+import { useRouter } from "next/navigation"; // 👈 Added useRouter
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Zap, ArrowRight, Activity, Lock, Cpu } from "lucide-react";
 
 export default function LandingPage() {
+  const router = useRouter();
+
+  // 🔥 AUTH GUARD: Prevent logged-in users from seeing this page
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      // If they have a token, bounce them back to dashboard immediately
+      router.replace("/dashboard");
+    }
+  }, [router]);
+
   return (
     <div className="min-h-screen bg-[#050505] text-white selection:bg-blue-500/30 overflow-hidden font-sans">
       {/* 1. Background Grid & Glows */}
@@ -89,7 +102,6 @@ export default function LandingPage() {
           transition={{ delay: 0.3 }}
           className="flex flex-col sm:flex-row gap-6 w-full justify-center items-center"
         >
-          {/* ✅ FIXED: Link points to /signup instead of /register */}
           <Link href="/signup" className="w-full sm:w-auto">
             <button className="h-14 px-10 rounded-xl bg-white text-black font-bold text-lg hover:bg-zinc-200 transition-all w-full sm:w-auto flex items-center justify-center gap-2 shadow-[0_0_40px_-10px_rgba(255,255,255,0.3)] hover:scale-[1.02]">
               SignUp to Deploy Workspace{" "}
@@ -99,7 +111,7 @@ export default function LandingPage() {
         </motion.div>
       </main>
 
-      {/* 4. High-Tech Feature Grid (No more simple boxes) */}
+      {/* 4. High-Tech Feature Grid */}
       <section className="relative z-10 pb-32 pt-10">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -151,7 +163,7 @@ export default function LandingPage() {
   );
 }
 
-// 🎨 Redesigned "System Module" Tile
+// 🎨 Feature Tile Component
 function FeatureTile({
   icon,
   title,

@@ -97,7 +97,11 @@ export default function IncidentWarRoom() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL;
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+  // 🔥 FIX: Use the Secure Socket URL (Base Domain)
+  const SOCKET_URL = "https://triagen.40.192.34.253.sslip.io";
+
   const socketRef = useRef<Socket | null>(null);
 
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -160,17 +164,25 @@ export default function IncidentWarRoom() {
       })
       .catch(() => router.push("/dashboard"));
 
-    socketRef.current = io(API_URL, {
+    // 🔥 FIX: Connect to SOCKET_URL instead of API_URL
+    socketRef.current = io(SOCKET_URL, {
       auth: { token },
-      transports: ["websocket"],
+      transports: ["websocket", "polling"],
+      withCredentials: true,
+      path: "/socket.io/", // Critical for Nginx
     });
+
     const socket = socketRef.current;
 
-    socket.emit("joinRoom", `incident:${id}`);
+    socket.on("connect", () => {
+      console.log("✅ Chat Connected:", socket.id);
+      socket.emit("joinRoom", `incident:${id}`);
+    });
 
     // --- LISTENERS ---
 
     socket.on("newComment", (event) => {
+      console.log("💬 New Message:", event);
       setIncident((prev: any) => {
         if (!prev) return prev;
 
@@ -263,14 +275,18 @@ export default function IncidentWarRoom() {
     const token = localStorage.getItem("token");
     const msg = newMessage;
     setNewMessage("");
-    await axios.post(
-      `${API_URL}/incidents/${id}/comments`,
-      { message: msg },
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+    try {
+      await axios.post(
+        `${API_URL}/incidents/${id}/comments`,
+        { message: msg },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch {
+      toast.error("Failed to send message");
+      setNewMessage(msg); // Restore message on fail
+    }
   };
 
-  // 🔥 FIX: Split logic into uploadFiles (core) and handleInputFileChange (event)
   const uploadFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     setIsUploading(true);
@@ -295,7 +311,6 @@ export default function IncidentWarRoom() {
     }
   };
 
-  // 🔥 FIX: Correct Event Type for Input Change
   const handleInputFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     uploadFiles(e.target.files);
   };
@@ -619,7 +634,6 @@ export default function IncidentWarRoom() {
                               handleDownload(item.url, item.filename)
                             }
                           >
-                            {/* 🔥 FIX: Suppress Next.js Image Warning */}
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={item.url}
@@ -656,7 +670,6 @@ export default function IncidentWarRoom() {
                           >
                             <Download className="h-4 w-4" />
                           </button>
-                          {/* 🔥 Lock Actions if Resolved */}
                           {!isResolved &&
                             (isMe || currentUser?.role === "ADMIN") && (
                               <button
@@ -709,7 +722,6 @@ export default function IncidentWarRoom() {
                           </div>
                         )}
 
-                        {/* 🔥 Lock Actions if Resolved */}
                         {!editingEventId && isMe && !isResolved && (
                           <div
                             className={`absolute top-0 -right-16 opacity-0 group-hover/msg:opacity-100 flex items-center gap-1 transition-opacity ${isMe ? "right-auto -left-16" : "-right-16"}`}
@@ -737,7 +749,7 @@ export default function IncidentWarRoom() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* 🔥 CONDITIONAL INPUT AREA */}
+          {/* INPUT AREA */}
           {isResolved ? (
             <div className="p-4 bg-black border-t border-zinc-800 z-20">
               <div className="max-w-4xl mx-auto bg-zinc-900/50 border border-zinc-800 p-3 rounded-xl flex items-center justify-center gap-3 text-zinc-400">
@@ -756,7 +768,6 @@ export default function IncidentWarRoom() {
           ) : (
             <div className="p-4 bg-black border-t border-zinc-800 z-20">
               <div className="max-w-4xl mx-auto flex items-end gap-3 bg-zinc-900 p-2 rounded-xl border border-zinc-800 focus-within:border-blue-500/50 transition-colors shadow-2xl">
-                {/* 🔥 FIX: Connected handleInputFileChange */}
                 <input
                   type="file"
                   ref={fileInputRef}

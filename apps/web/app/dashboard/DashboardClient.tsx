@@ -23,6 +23,7 @@ import {
   Users,
   Filter,
   XCircle,
+  Megaphone,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -98,10 +99,7 @@ export default function Dashboard() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  // 👇 Keep this for Axios (REST API)
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
-  // 👇 FIX: Use this for Socket (Your new Secure Domain)
   const SOCKET_URL = "https://triagen.40.192.34.253.sslip.io";
 
   const socketRef = useRef<Socket | null>(null);
@@ -164,12 +162,11 @@ export default function Dashboard() {
 
     if (!token || !storedUser || socketRef.current) return;
 
-    // 👇 FIX: Use SOCKET_URL (Base Domain) instead of API_URL
     socketRef.current = io(SOCKET_URL, {
       auth: { token },
       transports: ["websocket", "polling"],
       withCredentials: true,
-      path: "/socket.io/", // Explicitly set path
+      path: "/socket.io/",
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
     });
@@ -180,23 +177,36 @@ export default function Dashboard() {
       console.log("✅ Connected to Command Center Socket:", socket.id)
     );
 
-    socket.on("connect_error", (err) =>
-      console.error("❌ Socket Connection Error:", err.message)
-    );
-
     // --- EVENT HANDLERS ---
-    socket.on("incident:created", (payload: any) => {
-      console.log("🔔 Socket Event Received:", payload);
 
-      // Note: We use JSON.parse here to get the LATEST user state inside the event
+    // 1. Incident Created (Smart Notification Logic)
+    socket.on("incident:created", (payload: any) => {
+      console.log("🔔 Created:", payload);
       const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+
+      // Don't notify the person who created it
       if (payload.reporterId === currentUser.id) return;
 
-      toast.message("🚨 New Incident Alert", {
-        description: `${payload.severity}: ${payload.title}`,
-        icon: <ShieldAlert className="h-5 w-5 text-red-500" />,
-        duration: 5000,
-      });
+      const targetTeam = payload.team?.name || "General";
+      const myTeam = currentUser.team?.name;
+      const isForMyTeam = targetTeam === myTeam;
+
+      // 🔥 LOGIC: Urgent alert if it's for MY team
+      if (isForMyTeam) {
+        toast.error(`🔥 ACTION REQUIRED: Incident for ${targetTeam}!`, {
+          description: `${payload.severity}: ${payload.title}`,
+          icon: <ShieldAlert className="h-6 w-6 text-white" />,
+          duration: 8000, // Show longer for urgent
+          className: "bg-red-950 border-red-800 text-white font-bold",
+        });
+      } else {
+        // Standard alert for other teams
+        toast.message(`New Incident assigned to ${targetTeam}`, {
+          description: payload.title,
+          icon: <Megaphone className="h-5 w-5 text-blue-400" />,
+          duration: 5000,
+        });
+      }
 
       setIncidents((prev) => {
         if (prev.find((i) => i.id === payload.id)) return prev;
@@ -204,22 +214,39 @@ export default function Dashboard() {
       });
     });
 
+    // 2. Updated / Assigned
     socket.on("incident:assigned", (payload: any) => {
       setIncidents((prev) =>
         prev.map((inc) => (inc.id === payload.id ? payload : inc))
       );
     });
 
-    // Cleanup
+    // 3. Updated Status
+    socket.on("incident:updated", (payload: any) => {
+      setIncidents((prev) =>
+        prev.map((inc) => (inc.id === payload.id ? payload : inc))
+      );
+    });
+
+    // 4. Deleted
+    socket.on("incident:deleted", (payload: any) => {
+      console.log("🗑 Incident Deleted:", payload);
+      const idToDelete = typeof payload === "string" ? payload : payload.id;
+      if (idToDelete) {
+        setIncidents((prev) => prev.filter((i) => i.id !== idToDelete));
+        toast.info("Incident removed");
+      }
+    });
+
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, []); // Run once on mount
+  }, []);
 
-  // 🔍 Client-side filtering
+  // Filtering Logic
   const filteredIncidents = useMemo(() => {
     return incidents.filter((incident) => {
       const safeTitle = incident.title ? incident.title.toLowerCase() : "";
@@ -275,7 +302,7 @@ export default function Dashboard() {
         teamName: "DevOps",
         tags: "",
       });
-      toast.success("Incident Broadcasted");
+      toast.success(`Incident broadcasted to ${formData.teamName}`);
     } catch (error) {
       console.error(error);
       toast.error("Failed to create incident");
@@ -319,7 +346,6 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-black text-zinc-100 selection:bg-blue-500/30">
-      {/* HEADER */}
       <header className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 font-bold text-lg tracking-tight">
@@ -367,7 +393,6 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* TABS SECTION */}
         <div className="flex items-center gap-2 mb-6 border-b border-zinc-800 pb-1">
           <button
             onClick={() => handleTabChange("ALL")}
@@ -401,7 +426,6 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* TOOLBAR */}
         <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-white mb-1">
@@ -417,7 +441,6 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
-            {/* Search */}
             <div className="relative group w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 group-focus-within:text-blue-500 transition-colors" />
               <input
@@ -429,7 +452,6 @@ export default function Dashboard() {
               />
             </div>
 
-            {/* Severity Filter */}
             <div className="relative w-full sm:w-auto">
               <select
                 value={severityFilter}
@@ -445,7 +467,6 @@ export default function Dashboard() {
               <Filter className="absolute right-3 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-500 pointer-events-none" />
             </div>
 
-            {/* Status Filter */}
             <div className="relative w-full sm:w-auto">
               <select
                 value={statusFilter}
@@ -469,7 +490,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* LIST */}
         {loading ? (
           <div className="space-y-4 animate-pulse">
             {[1, 2, 3].map((i) => (
@@ -574,7 +594,7 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* Report Modal Component */}
+      {/* Report Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl w-full max-w-lg shadow-2xl relative overflow-hidden">
