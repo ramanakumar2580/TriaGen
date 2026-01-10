@@ -48,6 +48,10 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # ---------------------------------------------------------
+          # 🔥 FIX: Increase timeout to 30 mins to allow docker pull
+          # ---------------------------------------------------------
+          command_timeout: 30m
           script: |
             # 1. Create Docker Network (if not exists)
             docker network create triagen_network || true
