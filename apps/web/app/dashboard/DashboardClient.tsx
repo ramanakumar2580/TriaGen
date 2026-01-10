@@ -24,6 +24,7 @@ import {
   Filter,
   XCircle,
   Megaphone,
+  Tag,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -51,7 +52,7 @@ interface Incident {
   reporter?: { id: string; name: string };
   team?: { id: string; name: string };
   assignee?: { id: string; name: string };
-  tags?: any;
+  tags?: string[]; // Fixed type
 }
 
 interface UserProfile {
@@ -193,7 +194,7 @@ export default function Dashboard() {
 
       // 🔥 LOGIC: Urgent alert if it's for MY team
       if (isForMyTeam) {
-        toast.error(`🔥 ACTION REQUIRED: Incident for ${targetTeam}!`, {
+        toast.error(`ACTION REQUIRED: Incident for ${targetTeam}!`, {
           description: `${payload.severity}: ${payload.title}`,
           icon: <ShieldAlert className="h-6 w-6 text-white" />,
           duration: 8000, // Show longer for urgent
@@ -657,6 +658,25 @@ export default function Dashboard() {
                   </select>
                 </div>
               </div>
+
+              {/* ✅ ADDED: Missing Tags Input */}
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider mb-1.5">
+                  Tags (comma separated)
+                </label>
+                <div className="relative">
+                  <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                  <input
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-4 py-3 text-white focus:ring-2 focus:ring-blue-600 outline-none placeholder-zinc-600"
+                    placeholder="e.g. database, outage, aws"
+                    value={formData.tags}
+                    onChange={(e) =>
+                      setFormData({ ...formData, tags: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider mb-1.5">
                   Description

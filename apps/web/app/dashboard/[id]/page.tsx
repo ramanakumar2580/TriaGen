@@ -98,8 +98,6 @@ export default function IncidentWarRoom() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
-  // 🔥 FIX: Use the Secure Socket URL (Base Domain)
   const SOCKET_URL = "https://triagen.40.192.34.253.sslip.io";
 
   const socketRef = useRef<Socket | null>(null);
@@ -164,12 +162,11 @@ export default function IncidentWarRoom() {
       })
       .catch(() => router.push("/dashboard"));
 
-    // 🔥 FIX: Connect to SOCKET_URL instead of API_URL
     socketRef.current = io(SOCKET_URL, {
       auth: { token },
       transports: ["websocket", "polling"],
       withCredentials: true,
-      path: "/socket.io/", // Critical for Nginx
+      path: "/socket.io/",
     });
 
     const socket = socketRef.current;
@@ -182,7 +179,6 @@ export default function IncidentWarRoom() {
     // --- LISTENERS ---
 
     socket.on("newComment", (event) => {
-      console.log("💬 New Message:", event);
       setIncident((prev: any) => {
         if (!prev) return prev;
 
@@ -217,6 +213,9 @@ export default function IncidentWarRoom() {
     });
 
     socket.on("incident:updated", (updatedData: any) => {
+      // 🔥 FIX 3: Get fresh user ID from storage to prevent self-notification
+      const currentUserId = JSON.parse(localStorage.getItem("user") || "{}").id;
+
       setIncident((prev: any) => {
         if (!prev) return prev;
         return {
@@ -228,7 +227,10 @@ export default function IncidentWarRoom() {
       });
 
       if (updatedData.assignee) {
-        toast.info(`Incident assigned to ${updatedData.assignee.name}`);
+        // Only show notification if assigned to SOMEONE ELSE
+        if (updatedData.assignee.id !== currentUserId) {
+          toast.info(`Incident assigned to ${updatedData.assignee.name}`);
+        }
       }
     });
 
@@ -283,7 +285,7 @@ export default function IncidentWarRoom() {
       );
     } catch {
       toast.error("Failed to send message");
-      setNewMessage(msg); // Restore message on fail
+      setNewMessage(msg);
     }
   };
 
@@ -316,39 +318,62 @@ export default function IncidentWarRoom() {
   };
 
   const handleDeleteIncident = async () => {
-    if (
-      !confirm(
-        "Are you sure? This will delete the incident and all attachments permanently."
-      )
-    )
-      return;
-    try {
-      await axios.delete(`${API_URL}/incidents/${id}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      toast.success("Incident deleted");
-      router.push("/dashboard");
-    } catch {
-      toast.error("Delete failed. Permission denied.");
-    }
+    // 🔥 FIX 1: Professional Toast Confirmation (No Browser Alert)
+    toast("Are you sure? This action is permanent.", {
+      action: {
+        label: "Delete Incident",
+        onClick: async () => {
+          try {
+            await axios.delete(`${API_URL}/incidents/${id}`, {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+              },
+            });
+            toast.success("Incident deleted");
+            router.push("/dashboard");
+          } catch {
+            toast.error("Delete failed. Permission denied.");
+          }
+        },
+      },
+      // ✅ FIX: Added onClick to cancel
+      cancel: {
+        label: "Cancel",
+        onClick: () => {},
+      },
+    });
   };
 
   const handleDeleteMessage = async (eventId: string) => {
-    if (!confirm("Delete message?")) return;
+    // 🔥 FIX 1: Professional Toast Confirmation
+    toast("Delete this message?", {
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          // Optimistic Update
+          setIncident((prev: any) => ({
+            ...prev,
+            events: prev.events.filter((e: any) => e.id !== eventId),
+          }));
 
-    setIncident((prev: any) => ({
-      ...prev,
-      events: prev.events.filter((e: any) => e.id !== eventId),
-    }));
-
-    try {
-      await axios.delete(`${API_URL}/incidents/${id}/events/${eventId}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      toast.success("Message deleted");
-    } catch {
-      toast.error("Failed to delete");
-    }
+          try {
+            await axios.delete(`${API_URL}/incidents/${id}/events/${eventId}`, {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+              },
+            });
+            toast.success("Message deleted");
+          } catch {
+            toast.error("Failed to delete");
+          }
+        },
+      },
+      // ✅ FIX: Added onClick to cancel
+      cancel: {
+        label: "Cancel",
+        onClick: () => {},
+      },
+    });
   };
 
   const startEditing = (event: any) => {
@@ -384,24 +409,47 @@ export default function IncidentWarRoom() {
   };
 
   const handleDeleteAttachment = async (attachmentId: string) => {
-    if (!confirm("Delete this attachment permanently?")) return;
+    // 🔥 FIX 1: Professional Toast Confirmation
+    toast("Delete this attachment?", {
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          // Optimistic Update
+          setIncident((prev: any) => ({
+            ...prev,
+            attachments: prev.attachments.filter(
+              (a: any) => a.id !== attachmentId
+            ),
+          }));
 
-    setIncident((prev: any) => ({
-      ...prev,
-      attachments: prev.attachments.filter((a: any) => a.id !== attachmentId),
-    }));
-
-    try {
-      await axios.delete(
-        `${API_URL}/incidents/${id}/attachments/${attachmentId}`,
-        {
-          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        }
-      );
-      toast.success("Attachment deleted");
-    } catch {
-      toast.error("Failed to delete attachment");
-    }
+          try {
+            await axios.delete(
+              `${API_URL}/incidents/${id}/attachments/${attachmentId}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${localStorage.getItem("token")}`,
+                },
+              }
+            );
+            toast.success("Attachment deleted");
+          } catch (error: any) {
+            // 🔥 FIX 2: Ignore 404 (File already deleted on server)
+            if (error.response && error.response.status === 404) {
+              console.log(
+                "Attachment already deleted on server, ignoring error."
+              );
+              return;
+            }
+            toast.error("Failed to delete attachment");
+          }
+        },
+      },
+      // ✅ FIX: Added onClick to cancel
+      cancel: {
+        label: "Cancel",
+        onClick: () => {},
+      },
+    });
   };
 
   const handleDownload = (url: string, filename: string) => {
