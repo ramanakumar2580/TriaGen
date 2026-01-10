@@ -179,25 +179,28 @@ export default function Dashboard() {
 
     // --- EVENT HANDLERS ---
 
-    // 1. Incident Created
+    // 1. Incident Created (Smart Notification Logic)
     socket.on("incident:created", (payload: any) => {
       console.log("🔔 Created:", payload);
       const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
 
+      // Don't notify the person who created it
       if (payload.reporterId === currentUser.id) return;
 
       const targetTeam = payload.team?.name || "General";
       const myTeam = currentUser.team?.name;
       const isForMyTeam = targetTeam === myTeam;
 
+      // 🔥 LOGIC: Urgent alert if it's for MY team
       if (isForMyTeam) {
         toast.error(`ACTION REQUIRED: Incident for ${targetTeam}!`, {
           description: `${payload.severity}: ${payload.title}`,
           icon: <ShieldAlert className="h-6 w-6 text-white" />,
-          duration: 8000,
+          duration: 8000, // Show longer for urgent
           className: "bg-red-950 border-red-800 text-white font-bold",
         });
       } else {
+        // Standard alert for other teams
         toast.message(`New Incident assigned to ${targetTeam}`, {
           description: payload.title,
           icon: <Megaphone className="h-5 w-5 text-blue-400" />,
@@ -225,28 +228,13 @@ export default function Dashboard() {
       );
     });
 
-    // 4. Deleted - 🔥 FIXED LOGIC
+    // 4. Deleted
     socket.on("incident:deleted", (payload: any) => {
-      console.log("🗑 Incident Deleted Signal Received:", payload);
-
-      // Robust ID Extraction: Handle string ID OR object with id/incidentId property
-      const idToDelete =
-        typeof payload === "string"
-          ? payload
-          : payload.id
-            ? payload.id
-            : payload.incidentId;
-
+      console.log("🗑 Incident Deleted:", payload);
+      const idToDelete = typeof payload === "string" ? payload : payload.id;
       if (idToDelete) {
-        setIncidents((prev) => {
-          const exists = prev.find((i) => i.id === idToDelete);
-          if (exists) {
-            toast.info("Incident removed remotely");
-          }
-          return prev.filter((i) => i.id !== idToDelete);
-        });
-      } else {
-        console.warn("Received delete event but could not extract ID", payload);
+        setIncidents((prev) => prev.filter((i) => i.id !== idToDelete));
+        toast.info("Incident removed");
       }
     });
 
