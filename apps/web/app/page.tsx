@@ -197,7 +197,6 @@ function FeatureTile({
           <h3 className="text-xl font-bold text-white mb-2">{title}</h3>
         </div>
 
-        {/* Bottom Part */}
         <p className="text-zinc-400 text-sm leading-relaxed border-t border-white/5 pt-4 group-hover:text-zinc-300 transition-colors">
           {subtitle}
         </p>
