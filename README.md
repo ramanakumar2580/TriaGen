@@ -1,136 +1,120 @@
-# Turborepo starter
+# TriaGen
 
-This Turborepo starter is maintained by the Turborepo core team.
+[![CI/CD](https://img.shields.io/badge/GitHub_Actions-CI%2FCD-2088FF?style=for-the-badge&logo=github-actions)](https://github.com/ramanakumar2580/TriaGen/actions)
 
-## Using this example
+**Live Demo:** [https://triagen.40.192.34.253.sslip.io/](https://triagen.40.192.34.253.sslip.io/)
 
-Run the following command:
+**TriaGen** is an enterprise-grade Incident Management Platform designed for high-velocity DevOps and SRE teams who need clarity during chaos.
 
-```sh
-npx create-turbo@latest
+Unlike generic ticketing systems like Jira or simple chat apps—which lack urgency and real-time context—TriaGen creates a dedicated **Real-Time War Room** for every outage. It acts as a unified command center where status updates, evidence collection, and team assignments happen instantly. With built-in SLA monitoring and automated escalation policies, it ensures critical alerts never slip through the cracks.
+
+---
+
+## Key Features
+
+- **Real-Time War Room:** WebSocket-powered collaboration. Status changes, comments, and assignments update instantly across all screens without refreshing.
+- **Role-Based Access Control (RBAC):**
+  - **Admins:** Full system control, including "Hard Delete" (database + S3 cleanup) and Team management.
+  - **Responders:** Can resolve, acknowledge, and manage assignments.
+  - **Members:** Can report incidents and contribute context to the timeline.
+- **Team-Based Routing:** Smart routing that assigns incidents to specific squads (e.g., "DevOps", "Backend") with instant "Toast" notifications for online team members.
+- **SLA Breach Monitoring:** Visual countdown timers for CRITICAL incidents. Cards turn red and flash when the resolution time limit is exceeded.
+- **Evidence Locker:** Dedicated sidebar gallery for attaching logs, screenshots, and post-mortem docs, stored securely in **AWS S3**.
+- **Automated Escalation:** Background workers (**BullMQ**) automatically escalate incidents (e.g., bump severity to Critical) if they remain unacknowledged for too long.
+- **Post-Mortem Exports:** One-click generation of incident logs (`.txt` or `.md`) for compliance and review.
+
+---
+
+## Technical Architecture
+
+TriaGen is built as a **Modern Monorepo** for type safety and speed, fully containerized and deployed via CI/CD pipelines.
+
+- **Frontend:** **Next.js 15 (App Router)** deployed on **AWS EC2**.
+- **Backend:** **NestJS** (Node.js) deployed on **AWS EC2** via Docker containers.
+- **Database:** **PostgreSQL** (Dockerized) managed via **Prisma ORM**.
+- **Real-Time Engine:** **Socket.io** gateway for bi-directional event broadcasting.
+- **Queue System:** **BullMQ** running on **Redis** for background jobs (escalation timers).
+- **Storage:** **AWS S3** for secure, scalable file hosting.
+- **DevOps:** **GitHub Actions** for CI/CD, **Docker Compose** for local orchestration.
+
+---
+
+## Environment Variables
+
+To run this project locally, you must configure environment variables for both the API and the Web client.
+
+### 1. Backend (`apps/api/.env`)
+
+```bash
+DATABASE_URL="postgresql://user:password@localhost:5432/triagen?schema=public"
+REDIS_HOST=localhost
+REDIS_PORT=6379
+JWT_SECRET=your_super_secret_jwt_key_here
+AWS_REGION=ap-south-1
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+AWS_BUCKET_NAME=triagen-uploads-private
 ```
 
-## What's inside?
+### 2. Frontend (`apps/web/.env`)
 
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
+```bash
+NEXT_PUBLIC_API_URL="[http://40.192.34.253:4000](http://40.192.34.253:4000)"
+NEXT_PUBLIC_AWS_REGION=ap-south-1
+NEXT_PUBLIC_AWS_BUCKET_NAME=triagen-uploads-public
 ```
 
-You can build a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
+### 3. Local Development
 
-```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build --filter=docs
+```bash
+1. Clone the repository
+   git clone https://github.com/ramanakumar2580/TriaGen.git
+   cd TriaGen
+   npm install
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
+2. Start Infrastructure (Docker)
+   docker-compose up -d
 
-### Develop
+3. Setup Database & Seed Data
+   cd apps/api
 
-To develop all apps and packages, run the following command:
+# Run Migrations
+  npx prisma migrate dev --name init_schema
 
-```
-cd my-turborepo
+# Seed Database (Creates Admin User & DevOps Team)
+  npx prisma db seed
+  cd ../..
 
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
+4. Run the development server
+   npm run dev
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
+### 4. Deployment Commands (AWS EC2)
 
+```bash
+1. Connecting to the Server
+   ssh -i "triagen-key.pem" ubuntu@40.192.34.253
+
+2. Updating the Application
+   cd ~/TriaGen
+   git pull origin main
+   docker-compose down
+   docker-compose up --build -d
+
+3. Viewing Logs
+   # View Backend Logs
+   docker logs -f triagen-api
+
+   # View Database Logs
+   docker logs -f triagen-postgres
+
+4. Database Maintenance (Production)
+   # Enter the API container
+   docker exec -it triagen-api /bin/sh
+
+   # Run Migrations
+   npx prisma migrate deploy
+
+   # Seed Production Data
+   npx prisma db seed
 ```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev --filter=web
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo login
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo link
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.com/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.com/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.com/docs/reference/configuration)
-- [CLI Usage](https://turborepo.com/docs/reference/command-line-reference)
-  vhgvjhb
