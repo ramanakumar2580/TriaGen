@@ -2,7 +2,7 @@
 
 [![CI/CD](https://img.shields.io/badge/GitHub_Actions-CI%2FCD-2088FF?style=for-the-badge&logo=github-actions)](https://github.com/ramanakumar2580/TriaGen/actions)
 
-**Live Demo:** [https://triagen.40.192.34.253.sslip.io/](https://triagen.40.192.34.253.sslip.io/)
+**Live Demo:** [https://tria-gen-web.vercel.app/](https://tria-gen-web.vercel.app/)
 
 **TriaGen** is an enterprise-grade Incident Management Platform designed for high-velocity DevOps and SRE teams who need clarity during chaos.
 
