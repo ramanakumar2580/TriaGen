@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import {
   Controller,
   Post,
@@ -40,7 +41,7 @@ export class FilesController {
 
   @UseGuards(AuthGuard('jwt'))
   @Post('confirm')
-  async confirmUpload(
+  confirmUpload(
     @Request() req: RequestWithUser,
     @Body()
     body: {
@@ -65,13 +66,14 @@ export class FilesController {
     return this.filesService.getDownloadUrl(decodedKey);
   }
 
-  // 🔥 UPDATED: Now accepts ID instead of Key
+  // UPDATED: Now accepts ID instead of Key
   // This matches the updated FilesService logic.
   @UseGuards(AuthGuard('jwt'))
   @Delete(':id')
   async deleteFile(@Param('id') id: string) {
     this.logger.log(`Request to delete file ID: ${id}`);
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const deleted = await this.filesService.deleteFile(id);
 
     if (!deleted) {

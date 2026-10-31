@@ -99,8 +99,10 @@ export default function Dashboard() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-  const SOCKET_URL = "https://triagen.40.192.34.253.sslip.io";
+  // 🔥 FIX: Make API and Socket URLs Dynamic
+  const API_URL =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+  const SOCKET_URL = API_URL.replace(/\/api$/, "");
 
   const socketRef = useRef<Socket | null>(null);
 
@@ -174,7 +176,7 @@ export default function Dashboard() {
     const socket = socketRef.current;
 
     socket.on("connect", () =>
-      console.log("✅ Connected to Command Center Socket:", socket.id)
+      console.log("✅ Connected to Command Center Socket:", socket.id),
     );
 
     // --- EVENT HANDLERS ---
@@ -217,14 +219,14 @@ export default function Dashboard() {
     // 2. Updated / Assigned
     socket.on("incident:assigned", (payload: any) => {
       setIncidents((prev) =>
-        prev.map((inc) => (inc.id === payload.id ? payload : inc))
+        prev.map((inc) => (inc.id === payload.id ? payload : inc)),
       );
     });
 
     // 3. Updated Status
     socket.on("incident:updated", (payload: any) => {
       setIncidents((prev) =>
-        prev.map((inc) => (inc.id === payload.id ? payload : inc))
+        prev.map((inc) => (inc.id === payload.id ? payload : inc)),
       );
     });
 
@@ -244,7 +246,7 @@ export default function Dashboard() {
         socketRef.current = null;
       }
     };
-  }, []);
+  }, [SOCKET_URL]);
 
   // Filtering Logic
   const filteredIncidents = useMemo(() => {
@@ -564,7 +566,7 @@ export default function Dashboard() {
                                     >
                                       #{tag}
                                     </span>
-                                  )
+                                  ),
                                 )}
                               </div>
                             )}

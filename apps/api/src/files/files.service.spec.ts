@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { FilesService } from './files.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-// 🔥 Senior Trick: Mock the AWS SDK to prevent real network calls/Config errors
+// Senior Trick: Mock the AWS SDK to prevent real network calls/Config errors
 jest.mock('@aws-sdk/client-s3', () => {
   return {
     S3Client: jest.fn().mockImplementation(() => {
@@ -16,7 +16,7 @@ jest.mock('@aws-sdk/client-s3', () => {
   };
 });
 
-// 🔥 Mock the Presigner (since it's a separate import)
+// Mock the Presigner (since it's a separate import)
 jest.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: jest.fn().mockResolvedValue('https://fake-s3-url.com'),
 }));

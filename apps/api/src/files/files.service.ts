@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Injectable, Logger } from '@nestjs/common';
@@ -18,7 +20,7 @@ export class FilesService {
 
   constructor(private prisma: PrismaService) {
     this.s3Client = new S3Client({
-      region: 'ap-south-2',
+      region: 'ap-southeast-2',
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
@@ -91,7 +93,7 @@ export class FilesService {
   }
 
   // 3. Save Metadata to DB (Helper)
-  async saveFileRecord(data: {
+  saveFileRecord(data: {
     incidentId: string;
     filename: string;
     fileKey: string;
@@ -99,7 +101,7 @@ export class FilesService {
     userId: string;
     sizeBytes?: number;
   }) {
-    const publicUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.ap-south-2.amazonaws.com/${data.fileKey}`;
+    const publicUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.ap-southeast-2.amazonaws.com/${data.fileKey}`;
 
     return this.prisma.attachment.create({
       data: {

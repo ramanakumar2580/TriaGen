@@ -18,7 +18,7 @@ export class RegisterDto {
     }
     return value;
   })
-  email: string;
+  email!: string;
 
   @IsNotEmpty()
   @IsString()
@@ -28,13 +28,14 @@ export class RegisterDto {
     }
     return value;
   })
-  name: string;
+  name!: string;
 
   @IsNotEmpty()
   @MinLength(6, { message: 'Password must be at least 6 characters long' })
-  password: string;
+  password!: string;
 
   @IsOptional() // Optional so it defaults to MEMBER if missing
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   @IsEnum(Role, { message: 'Role must be one of: MEMBER, RESPONDER, ADMIN' })
   role?: Role;
 

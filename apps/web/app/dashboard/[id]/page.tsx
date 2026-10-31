@@ -97,8 +97,10 @@ export default function IncidentWarRoom() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-  const SOCKET_URL = "https://triagen.40.192.34.253.sslip.io";
+  // 🔥 FIX: Make API and Socket URLs Dynamic based on Environment
+  const API_URL =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+  const SOCKET_URL = API_URL.replace(/\/api$/, "");
 
   const socketRef = useRef<Socket | null>(null);
 
@@ -127,7 +129,7 @@ export default function IncidentWarRoom() {
     }));
 
     return [...chatEvents, ...fileEvents].sort(
-      (a, b) => a.sortTime - b.sortTime
+      (a, b) => a.sortTime - b.sortTime,
     );
   }, [incident]);
 
@@ -162,6 +164,7 @@ export default function IncidentWarRoom() {
       })
       .catch(() => router.push("/dashboard"));
 
+    // 🔥 Socket connected to Dynamic URL
     socketRef.current = io(SOCKET_URL, {
       auth: { token },
       transports: ["websocket", "polling"],
@@ -193,7 +196,7 @@ export default function IncidentWarRoom() {
           return {
             ...prev,
             events: prev.events.map((e: any) =>
-              e.id === event.id ? event : e
+              e.id === event.id ? event : e,
             ),
           };
         }
@@ -213,7 +216,6 @@ export default function IncidentWarRoom() {
     });
 
     socket.on("incident:updated", (updatedData: any) => {
-      // 🔥 FIX 3: Get fresh user ID from storage to prevent self-notification
       const currentUserId = JSON.parse(localStorage.getItem("user") || "{}").id;
 
       setIncident((prev: any) => {
@@ -227,7 +229,6 @@ export default function IncidentWarRoom() {
       });
 
       if (updatedData.assignee) {
-        // Only show notification if assigned to SOMEONE ELSE
         if (updatedData.assignee.id !== currentUserId) {
           toast.info(`Incident assigned to ${updatedData.assignee.name}`);
         }
@@ -267,7 +268,7 @@ export default function IncidentWarRoom() {
     return () => {
       socket.disconnect();
     };
-  }, [id, API_URL, router]);
+  }, [id, API_URL, SOCKET_URL, router]);
 
   // --- ACTIONS ---
 
@@ -281,7 +282,7 @@ export default function IncidentWarRoom() {
       await axios.post(
         `${API_URL}/incidents/${id}/comments`,
         { message: msg },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
     } catch {
       toast.error("Failed to send message");
@@ -318,7 +319,6 @@ export default function IncidentWarRoom() {
   };
 
   const handleDeleteIncident = async () => {
-    // 🔥 FIX 1: Professional Toast Confirmation (No Browser Alert)
     toast("Are you sure? This action is permanent.", {
       action: {
         label: "Delete Incident",
@@ -336,7 +336,6 @@ export default function IncidentWarRoom() {
           }
         },
       },
-      // ✅ FIX: Added onClick to cancel
       cancel: {
         label: "Cancel",
         onClick: () => {},
@@ -345,12 +344,10 @@ export default function IncidentWarRoom() {
   };
 
   const handleDeleteMessage = async (eventId: string) => {
-    // 🔥 FIX 1: Professional Toast Confirmation
     toast("Delete this message?", {
       action: {
         label: "Delete",
         onClick: async () => {
-          // Optimistic Update
           setIncident((prev: any) => ({
             ...prev,
             events: prev.events.filter((e: any) => e.id !== eventId),
@@ -368,7 +365,6 @@ export default function IncidentWarRoom() {
           }
         },
       },
-      // ✅ FIX: Added onClick to cancel
       cancel: {
         label: "Cancel",
         onClick: () => {},
@@ -387,7 +383,7 @@ export default function IncidentWarRoom() {
     setIncident((prev: any) => ({
       ...prev,
       events: prev.events.map((e: any) =>
-        e.id === editingEventId ? { ...e, message: editMessageText } : e
+        e.id === editingEventId ? { ...e, message: editMessageText } : e,
       ),
     }));
 
@@ -400,7 +396,7 @@ export default function IncidentWarRoom() {
         { message: editMessageText },
         {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        }
+        },
       );
       toast.success("Message updated");
     } catch {
@@ -409,16 +405,14 @@ export default function IncidentWarRoom() {
   };
 
   const handleDeleteAttachment = async (attachmentId: string) => {
-    // 🔥 FIX 1: Professional Toast Confirmation
     toast("Delete this attachment?", {
       action: {
         label: "Delete",
         onClick: async () => {
-          // Optimistic Update
           setIncident((prev: any) => ({
             ...prev,
             attachments: prev.attachments.filter(
-              (a: any) => a.id !== attachmentId
+              (a: any) => a.id !== attachmentId,
             ),
           }));
 
@@ -429,14 +423,13 @@ export default function IncidentWarRoom() {
                 headers: {
                   Authorization: `Bearer ${localStorage.getItem("token")}`,
                 },
-              }
+              },
             );
             toast.success("Attachment deleted");
           } catch (error: any) {
-            // 🔥 FIX 2: Ignore 404 (File already deleted on server)
             if (error.response && error.response.status === 404) {
               console.log(
-                "Attachment already deleted on server, ignoring error."
+                "Attachment already deleted on server, ignoring error.",
               );
               return;
             }
@@ -444,7 +437,6 @@ export default function IncidentWarRoom() {
           }
         },
       },
-      // ✅ FIX: Added onClick to cancel
       cancel: {
         label: "Cancel",
         onClick: () => {},
@@ -466,7 +458,7 @@ export default function IncidentWarRoom() {
     await axios.patch(
       `${API_URL}/incidents/${id}`,
       { status },
-      { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }
+      { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } },
     );
   };
 
@@ -477,9 +469,8 @@ export default function IncidentWarRoom() {
         { assigneeId: currentUser.id },
         {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        }
+        },
       );
-      // Optimistic update
       setIncident((prev: any) => ({
         ...prev,
         assignee: currentUser,
@@ -501,7 +492,6 @@ export default function IncidentWarRoom() {
       </div>
     );
 
-  // 🔒 Logic Constants
   const isResolved = incident.status === Status.RESOLVED;
   const canDeleteIncident =
     currentUser?.role === "ADMIN" ||

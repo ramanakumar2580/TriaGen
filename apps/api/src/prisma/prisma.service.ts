@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
   Injectable,
   OnModuleInit,
@@ -11,7 +12,7 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
-  // 🔥 Senior Feature: Add Logger for visibility
+  // Senior Feature: Add Logger for visibility
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
@@ -30,6 +31,6 @@ export class PrismaService
 
   async onModuleDestroy() {
     await this.$disconnect();
-    this.logger.log('🔌 Database disconnected');
+    this.logger.log('Database disconnected');
   }
 }

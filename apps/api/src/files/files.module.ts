@@ -9,7 +9,7 @@ import { ConfigModule } from '@nestjs/config';
   imports: [
     PrismaModule,
     AuthModule,
-    ConfigModule, // ⚙️ Enables access to environment variables safely
+    ConfigModule, // Enables access to environment variables safely
   ],
   controllers: [FilesController],
   providers: [FilesService],

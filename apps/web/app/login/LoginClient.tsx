@@ -77,7 +77,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen bg-black text-white selection:bg-blue-500/30 font-sans relative">
-      {/* 🔥 NEW: Back to Home Button (Top Left) */}
+      {/* Back to Home Button (Top Left) */}
       <Link
         href="/"
         className="absolute top-6 left-6 z-50 flex items-center gap-2 text-zinc-500 hover:text-white transition-colors text-sm font-medium"

@@ -6,10 +6,10 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  // 👇 CRITICAL FIX: Match the Nginx /api route
+  // Match the Nginx /api route
   app.setGlobalPrefix('api');
 
-  // 👇 FIX: Use the Environment Variable instead of hardcoded localhost
+  // 1. Use the Environment Variable instead of hardcoded localhost
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
   app.enableCors({

@@ -5,7 +5,7 @@ import { IncidentsService } from './incidents.service';
 describe('IncidentsController', () => {
   let controller: IncidentsController;
 
-  // 🔥 Mock the Service
+  // Mock the Service
   // We mock the methods that the Controller actually calls.
   const mockIncidentsService = {
     create: jest.fn(() => Promise.resolve({ id: '1', title: 'Test Incident' })),

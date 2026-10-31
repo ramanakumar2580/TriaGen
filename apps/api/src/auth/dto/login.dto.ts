@@ -10,9 +10,9 @@ export class LoginDto {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return value;
   })
-  email: string;
+  email!: string;
 
   @IsNotEmpty()
   @IsString()
-  password: string;
+  password!: string;
 }

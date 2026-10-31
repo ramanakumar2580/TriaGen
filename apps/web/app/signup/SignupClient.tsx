@@ -40,7 +40,7 @@ export default function SignupPage() {
   ];
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -50,9 +50,10 @@ export default function SignupPage() {
     setLoading(true);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL;
+    console.log("👉 TARGET API URL:", API_URL);
 
     try {
-      // 🚀 Sending full payload including Role & Team
+      // Sending full payload including Role & Team
       await axios.post(`${API_URL}/auth/register`, formData);
 
       toast.success("Welcome to the team!", {
