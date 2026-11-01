@@ -5,7 +5,6 @@ import axios from "axios";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-// 🔥 Added ArrowLeft here
 import {
   Loader2,
   Zap,
@@ -49,7 +48,9 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL;
+    // 🔥 FIX: Added fallback to prevent undefined network errors
+    const API_URL =
+      process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
     console.log("👉 TARGET API URL:", API_URL);
 
     try {
