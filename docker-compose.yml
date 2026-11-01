@@ -44,7 +44,7 @@ services:
       PORT: 4000
       JWT_SECRET: "l4hl5QdjAQcLcjk91hZ/qwbd+Qg5wE0ryGXbIX8GM8u8aPog3vK6RRvktZr1ZHqfRxCJ8iaxtBXi4DRGt2EeGA=="
       NODE_ENV: production
-      FRONTEND_URL: "https://triagen.16.176.173.35.sslip.io"
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       # AWS Secrets (Pass them through)
       AWS_REGION: ${AWS_REGION}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
