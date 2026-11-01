@@ -12,6 +12,8 @@ import {
   Lock,
   ShieldCheck,
   ArrowLeft,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 export default function LoginPage() {
@@ -20,6 +22,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // 🔥 Added toggle state
 
   // 🛡️ Fix: Prevent double-toast in Strict Mode
   const hasShownToast = useRef(false);
@@ -41,7 +44,6 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
-    // 🔥 FIX: Added fallback to prevent undefined network errors
     const API_URL =
       process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -136,19 +138,35 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
+
+            {/* Password with Reveal Toggle */}
             <div>
               <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
                 Password
               </label>
-              <input
-                type="password"
-                required
-                className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 text-white placeholder:text-zinc-600 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 pr-10 text-white placeholder:text-zinc-600 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3.5 text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
             </div>
+
             <button
               type="submit"
               disabled={loading}

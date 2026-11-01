@@ -12,6 +12,8 @@ import {
   Shield,
   Users,
   ArrowLeft,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 export default function SignupPage() {
@@ -27,6 +29,7 @@ export default function SignupPage() {
   });
 
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // 🔥 Added toggle state
 
   // 🏢 Hardcoded Teams (Must match your Seed file)
   const teams = [
@@ -48,7 +51,6 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
 
-    // 🔥 FIX: Added fallback to prevent undefined network errors
     const API_URL =
       process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
     console.log("👉 TARGET API URL:", API_URL);
@@ -78,7 +80,7 @@ export default function SignupPage() {
 
   return (
     <div className="flex min-h-screen bg-black text-white selection:bg-blue-500/30 font-sans relative">
-      {/* 🔥 NEW: Back to Home Button (Top Left) */}
+      {/* Back to Home Button (Top Left) */}
       <Link
         href="/"
         className="absolute top-6 left-6 z-50 flex items-center gap-2 text-zinc-500 hover:text-white transition-colors text-sm font-medium"
@@ -89,12 +91,10 @@ export default function SignupPage() {
 
       {/* LEFT SIDE: Brand Visuals */}
       <div className="hidden lg:flex w-1/2 relative bg-zinc-900 overflow-hidden items-center justify-center border-r border-zinc-800">
-        {/* Background Grid */}
         <div className="absolute inset-0 opacity-20 pointer-events-none">
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
         </div>
 
-        {/* Glowing Orbs */}
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl mix-blend-screen" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl mix-blend-screen" />
 
@@ -117,7 +117,6 @@ export default function SignupPage() {
 
       {/* RIGHT SIDE: Form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-black relative">
-        {/* Mobile Background Grid */}
         <div className="absolute inset-0 lg:hidden opacity-10 pointer-events-none">
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
         </div>
@@ -165,24 +164,37 @@ export default function SignupPage() {
               />
             </div>
 
-            {/* Password */}
+            {/* Password with Reveal Toggle */}
             <div>
               <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
                 Password
               </label>
-              <input
-                name="password"
-                type="password"
-                required
-                className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 text-white placeholder:text-zinc-600 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
-                placeholder="••••••••"
-                value={formData.password}
-                onChange={handleChange}
-              />
+              <div className="relative">
+                <input
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 pr-10 text-white placeholder:text-zinc-600 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={handleChange}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3.5 text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {/* 🛡️ Role Selection */}
+              {/* Role Selection */}
               <div>
                 <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
                   <Shield className="h-3 w-3" /> Role
@@ -198,7 +210,6 @@ export default function SignupPage() {
                     <option value="RESPONDER">Responder</option>
                     <option value="ADMIN">Admin</option>
                   </select>
-                  {/* Custom Arrow */}
                   <div className="absolute right-3 top-3.5 pointer-events-none text-zinc-500">
                     <svg className="h-4 w-4 fill-current" viewBox="0 0 20 20">
                       <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
@@ -207,7 +218,7 @@ export default function SignupPage() {
                 </div>
               </div>
 
-              {/* 🏢 Team Selection */}
+              {/* Team Selection */}
               <div>
                 <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
                   <Users className="h-3 w-3" /> Team
@@ -225,7 +236,6 @@ export default function SignupPage() {
                       </option>
                     ))}
                   </select>
-                  {/* Custom Arrow */}
                   <div className="absolute right-3 top-3.5 pointer-events-none text-zinc-500">
                     <svg className="h-4 w-4 fill-current" viewBox="0 0 20 20">
                       <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
