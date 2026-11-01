@@ -37,9 +37,9 @@ services:
     restart: always
     ports:
       - "4000:4000"
-    # 👇 Loads the file directly so AWS SDK gets the actual keys
+    # 👇 Loads the file directly from the root directory so AWS SDK gets the actual keys
     env_file:
-      - ./apps/api/.env
+      - .env
     environment:
       DATABASE_URL: "postgresql://admin:password123@postgres:5432/triagen_local?schema=public"
       REDIS_HOST: redis
@@ -47,6 +47,7 @@ services:
       PORT: 4000
       JWT_SECRET: "l4hl5QdjAQcLcjk91hZ/qwbd+Qg5wE0ryGXbIX8GM8u8aPog3vK6RRvktZr1ZHqfRxCJ8iaxtBXi4DRGt2EeGA=="
       NODE_ENV: production
+      FRONTEND_URL: "https://triagen.16.176.173.35.sslip.io"
     depends_on:
       postgres:
         condition: service_healthy
