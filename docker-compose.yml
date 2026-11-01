@@ -37,6 +37,9 @@ services:
     restart: always
     ports:
       - "4000:4000"
+    # 👇 Loads the file directly so AWS SDK gets the actual keys
+    env_file:
+      - ./apps/api/.env
     environment:
       DATABASE_URL: "postgresql://admin:password123@postgres:5432/triagen_local?schema=public"
       REDIS_HOST: redis
@@ -44,12 +47,6 @@ services:
       PORT: 4000
       JWT_SECRET: "l4hl5QdjAQcLcjk91hZ/qwbd+Qg5wE0ryGXbIX8GM8u8aPog3vK6RRvktZr1ZHqfRxCJ8iaxtBXi4DRGt2EeGA=="
       NODE_ENV: production
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      # AWS Secrets (Pass them through)
-      AWS_REGION: ${AWS_REGION}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      AWS_BUCKET_NAME: ${AWS_BUCKET_NAME}
     depends_on:
       postgres:
         condition: service_healthy
