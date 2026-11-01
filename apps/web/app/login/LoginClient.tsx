@@ -44,8 +44,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
-    const API_URL =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    const API_URL = "https://api.triagen.16.176.173.35.sslip.io/api";
 
     try {
       const res = await axios.post(`${API_URL}/auth/login`, {

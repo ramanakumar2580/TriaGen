@@ -51,8 +51,8 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
 
-    const API_URL =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    // Completely remove process.env here
+    const API_URL = "https://api.triagen.16.176.173.35.sslip.io/api";
     console.log("👉 TARGET API URL:", API_URL);
 
     try {
