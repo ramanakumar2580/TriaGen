@@ -9,11 +9,9 @@ async function bootstrap() {
   // Match the Nginx /api route
   app.setGlobalPrefix('api');
 
-  // 1. Use the Environment Variable instead of hardcoded localhost
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-
+  // 🔥 FIX: Hardcoded live URL to completely bypass Docker ENV issues
   app.enableCors({
-    origin: [frontendUrl],
+    origin: ['http://localhost:3000', 'https://triagen.16.176.173.35.sslip.io'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
@@ -30,6 +28,6 @@ async function bootstrap() {
   await app.listen(port, '0.0.0.0');
 
   logger.log(`🚀 Server running on: http://0.0.0.0:${port}/api`); // Updated log
-  logger.log(`Enable CORS for: ${frontendUrl}`);
+  logger.log(`Enable CORS for: localhost and live frontend`);
 }
 void bootstrap();

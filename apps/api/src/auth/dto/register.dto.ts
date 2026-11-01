@@ -8,7 +8,7 @@ import {
   IsOptional,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { Role } from '@prisma/client'; // 👈 Import the Enum we defined in Schema
+import { Role } from '@prisma/client'; //
 
 export class RegisterDto {
   @IsEmail()
