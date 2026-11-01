@@ -39,6 +39,7 @@ describe('AuthController', () => {
         email: 'test@triagen.com',
         name: 'Test User',
         password: 'password123',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
         role: Role.ADMIN, // Testing God Mode fields
         teamName: 'DevOps',
       };
