@@ -50,7 +50,8 @@ export default function NewIncidentPage() {
     e.preventDefault();
     setLoading(true);
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL;
+    // Completely remove process.env here
+    const API_URL = "https://api.triagen.16.176.173.35.sslip.io/api";
     const token = localStorage.getItem("token");
 
     if (!token) {

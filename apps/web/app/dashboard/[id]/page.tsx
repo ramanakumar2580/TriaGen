@@ -97,9 +97,9 @@ export default function IncidentWarRoom() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 🔥 FIX: Make API and Socket URLs Dynamic based on Environment
-  const API_URL =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+  // Make API and Socket URLs Dynamic based on Environment
+  // Completely remove process.env here
+  const API_URL = "https://api.triagen.16.176.173.35.sslip.io/api";
   const SOCKET_URL = API_URL.replace(/\/api$/, "");
 
   const socketRef = useRef<Socket | null>(null);
@@ -164,7 +164,7 @@ export default function IncidentWarRoom() {
       })
       .catch(() => router.push("/dashboard"));
 
-    // 🔥 Socket connected to Dynamic URL
+    // Socket connected to Dynamic URL
     socketRef.current = io(SOCKET_URL, {
       auth: { token },
       transports: ["websocket", "polling"],
